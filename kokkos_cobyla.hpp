@@ -98,4 +98,34 @@ void cobyla(
     IntegralWorkViewType iact
 );
 
+template <
+    typename IntegralType,
+    typename SolutionViewType,
+    typename ScalarType,
+    typename ScalarWorkViewType,
+    typename IntegralWorkViewType
+>
+KOKKOS_FUNCTION
+void cobylb(
+    IntegralType n,
+    IntegralType m,
+    IntegralType mpp,
+    SolutionViewType x,
+    ScalarType rhobeg,
+    ScalarType rhoend,
+    // IntegralType iprint,
+    IntegralType maxfun,
+    ScalarWorkViewType con,
+    ScalarWorkViewType sim,
+    ScalarWorkViewType simi,
+    ScalarWorkViewType datmat,
+    ScalarWorkViewType a,
+    ScalarWorkViewType vsig,
+    ScalarWorkViewType veta,
+    ScalarWorkViewType sigbar,
+    ScalarWorkViewType dx,
+    ScalarWorkViewType w,
+    IntegralWorkViewType iact
+);
+
 #endif // KOKKOS_COBYLA_HPP
