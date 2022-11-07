@@ -128,4 +128,29 @@ void cobylb(
     IntegralWorkViewType iact
 );
 
+template <
+    typename IntegralType,
+    typename SolutionViewType,
+    typename ScalarType,
+    typename ScalarWorkViewType,
+    typename IntegralWorkViewType
+>
+KOKKOS_FUNCTION
+void trstlp(
+    IntegralType n,
+    IntegralType m,
+    ScalarWorkViewType a,
+    ScalarWorkViewType b,
+    ScalarType rho,
+    ScalarWorkViewType dx,
+    IntegralType &ifull,
+    IntegralWorkViewType iact,
+    ScalarWorkViewType z,
+    ScalarWorkViewType zdota,
+    ScalarWorkViewType vmultc,
+    ScalarWorkViewType sdirn,
+    ScalarWorkViewType dxnew,
+    ScalarWorkViewType vmultd
+);
+
 #endif // KOKKOS_COBYLA_HPP
