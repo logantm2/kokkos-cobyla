@@ -392,10 +392,10 @@ line_370:
     IntegralType idxnew = isdirn + n;
     IntegralType ivmd = idxnew + n;
     IntegralType ifull = 0;
-    trstpl(
+    trstlp(
         n,
         m,
-        a,
+        a_flat,
         con,
         rho,
         dx,
