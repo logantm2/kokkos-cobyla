@@ -130,7 +130,6 @@ void cobylb(
 
 template <
     typename IntegralType,
-    typename SolutionViewType,
     typename ScalarType,
     typename ScalarWorkViewType,
     typename IntegralWorkViewType
