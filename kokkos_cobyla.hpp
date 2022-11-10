@@ -44,13 +44,13 @@ KOKKOS_INLINE_FUNCTION
 void trstlp(
     IntegralType n,
     IntegralType m,
-    ScalarWorkViewType a,
+    ScalarWorkViewType a_flat,
     ScalarWorkViewType b,
     ScalarType rho,
     ScalarWorkViewType dx,
     IntegralType &ifull,
     IntegralWorkViewType iact,
-    ScalarWorkViewType z,
+    ScalarWorkViewType z_flat,
     ScalarWorkViewType zdota,
     ScalarWorkViewType vmultc,
     ScalarWorkViewType sdirn,
@@ -91,9 +91,9 @@ void trstlp(
 
     namespace math =
 #if KOKKOS_VERSION < 30700
-        Kokkos;
-#else
         Kokkos::Experimental;
+#else
+        Kokkos;
 #endif
 
     // LTM Wrap unmanaged Views around the flattened Views
@@ -106,36 +106,81 @@ void trstlp(
     a(a_flat.data(), n, m+1),
     z(z_flat.data(), n, n);
 
+    // LTM F77 implicitly declares all of these variables.
+    // We gotta explicitly declare them.
+    IntegralType
+        mcon,
+        nact,
+        icon,
+        i,
+        j,
+        k,
+        nactx,
+        isave,
+        kk,
+        kw,
+        kp,
+        kl,
+        iout,
+        icount;
+    ScalarType
+        resmax,
+        optold,
+        optnew,
+        tot,
+        temp,
+        alpha,
+        beta,
+        sp,
+        spabs,
+        acca,
+        accb,
+        ratio,
+        zdotv,
+        zdvabs,
+        vsave,
+        dd,
+        ss,
+        sd,
+        stpful,
+        step,
+        zdotw,
+        zdwabs,
+        resold,
+        sumabs,
+        sum,
+        tempa;
+
     // Initialize Z and some other variables. The value of RESMAX will be
     // appropriate to DX=0, while ICON will be the index of a most violated
     // constraint if RESMAX is positive. Usually during the first stage the
     // vector SDIRN gives a search direction that reduces
     ifull = 1;
-    IntegralType mcon = m;
-    IntegralType nact = 0;
-    ScalarType resmax = 0.0;
-    IntegralType icon = 0;
-    for (IntegralType i=1; i<=n; i++) {
-        for (IntegralType j=1; j<=n; j++) {
+    mcon = m;
+    nact = 0;
+    resmax = 0.0;
+    icon = 0;
+    for (i=1; i<=n; i++) {
+        for (j=1; j<=n; j++) {
             z(m1(i),m1(j)) = 0.0;
         }
         z(m1(i),m1(i)) = 1.0;
         dx(m1(i)) = 0.0;
     }
     if (m >= 1) {
-        for (IntegralType k=1; k<=m; k++) {
+        for (k=1; k<=m; k++) {
             if (b(m1(k)) > resmax) {
-                resmax = b(m1(k))
+                resmax = b(m1(k));
                 icon = k;
             }
         }
-        for (IntegralType k=1; k<=m; k++) {
+        for (k=1; k<=m; k++) {
             iact(m1(k)) = k;
             vmultc(m1(k)) = resmax - b(m1(k));
         }
     }
     if (resmax == 0.0) goto line_480;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         sdirn(m1(i)) = 0.0;
     }
 
@@ -145,19 +190,19 @@ void trstlp(
     // value was calculated. This strategy prevents cycling, but there is a
     // remote possibility that it will cause premature termination.
 line_60:
-    ScalarType optold = 0.0;
-    ScalarType optnew;
-    IntegralType icount = 0;
+    optold = 0.0;
+    optnew;
+    icount = 0;
     if (mcon == m) {
         optnew = resmax;
     }
     else {
         optnew = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             optnew = optnew - dx(m1(i))*a(m1(i),m1(mcon));
         }
     }
-    IntegralType nactx = 0;
+    nactx = 0;
     if (icount == 0 or optnew < optold) {
         optold = optnew;
         nactx = nact;
@@ -178,27 +223,27 @@ line_60:
     // product being set to zero if its nonzero value could be due to computer
     // rounding errors. The array DXNEW is used for working space.
     if (icon <= nact) goto line_260;
-    IntegralType kk = iact(m1(icon));
-    for (IntegralType i=1; i<=n; i++) {
+    kk = iact(m1(icon));
+    for (i=1; i<=n; i++) {
         dxnew(m1(i)) = a(m1(i),m1(kk));
     }
-    ScalarType tot = 0.0;
-    IntegralType k = n;
-    IntegralType kp;
-    ScalarType temp;
-    ScalarType alpha;
-    ScalarType beta;
+    tot = 0.0;
+    k = n;
+    kp;
+    temp;
+    alpha;
+    beta;
 line_100:
     if (k > nact) {
-        ScalarType sp = 0.0;
-        ScalarType spabs = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        sp = 0.0;
+        spabs = 0.0;
+        for (i=1; i<=n; i++) {
             temp = z(m1(i),m1(k))*dxnew(m1(i));
             sp = sp + temp;
             spabs = spabs + math::fabs(temp);
         }
-        ScalarType acca = spabs + 0.1 * math::fabs(sp);
-        ScalarType accb = spabs + 0.2 * math::fabs(sp);
+        acca = spabs + 0.1 * math::fabs(sp);
+        accb = spabs + 0.2 * math::fabs(sp);
         if (spabs >= acca or acca >= accb) sp = 0.0;
         if (tot == 0.0) {
             tot = sp;
@@ -209,7 +254,7 @@ line_100:
             alpha = sp/temp;
             beta = tot/temp;
             tot = temp;
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 temp = alpha * z(m1(i),m1(k)) + beta * z(m1(i),m1(kp));
                 z(m1(i),m1(kp)) = alpha * z(m1(i),m1(kp)) - beta * z(m1(i),m1(k));
                 z(m1(i),m1(k)) = temp;
@@ -235,13 +280,13 @@ line_100:
     // the old active constraints. Set the elements of VMULTD to the multipliers
     // of the linear combination. Further, set IOUT to the index of the
     // constraint to be deleted, but branch if no suitable index can be found.
-    ScalarType ratio = -1.0;
+    ratio = -1.0;
     k = nact;
 line_130:
-    ScalarType zdotv = 0.0;
-    ScalarType zdvabs = 0.0;
-    IntegralType kw;
-    for (IntegralType i=1; i<=n; i++) {
+    zdotv = 0.0;
+    zdvabs = 0.0;
+    kw;
+    for (i=1; i<=n; i++) {
         temp = z(m1(i),m1(k))*dxnew(m1(i));
         zdotv = zdotv + temp;
         zdvabs = zdvabs + math::fabs(temp);
@@ -259,14 +304,14 @@ line_130:
         }
         if (k >= 2) {
             kw = iact(m1(k));
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 dxnew(m1(i)) = dxnew(m1(i)) - temp*a(m1(i),m1(kw));
             }
         }
         vmultd(m1(k)) = temp;
     }
     else {
-        vmultd(m1(k)) = 0.0
+        vmultd(m1(k)) = 0.0;
     }
     k = k-1;
     if (k > 0) goto line_130;
@@ -275,26 +320,26 @@ line_130:
     // Revise the Lagrange multipliers and reorder the active constraints so
     // that the one to be replaced is at the end of the list. Also calculate the
     // new value of ZDOTA(NACT) and branch if it is not acceptable.
-    for (IntegralType k=1; k<=nact; k++) {
+    for (k=1; k<=nact; k++) {
         vmultc(m1(k)) = math::fmax(0.0, vmultc(m1(k)) - ratio*vmultd(m1(k)));
     }
     if (icon < nact) {
-        IntegralType isave = iact(m1(icon));
-        ScalarType vsave = vmultc(m1(icon));
+        isave = iact(m1(icon));
+        vsave = vmultc(m1(icon));
         k = icon;
 line_170:
-        IntegralType kp = k + 1;
+        kp = k + 1;
         kw = iact(m1(kp));
-        ScalarType sp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        sp = 0.0;
+        for (i=1; i<=n; i++) {
             sp = sp + z(m1(i),m1(k)) * a(m1(i),m1(kw));
         }
         temp = math::sqrt(sp*sp + math::pow(zdota(m1(kp)), 2.0));
-        ScalarType alpha = zdota(m1(kp))/temp;
-        ScalarType beta = sp/temp;
+        alpha = zdota(m1(kp))/temp;
+        beta = sp/temp;
         zdota(m1(kp)) = alpha*zdota(m1(k));
         zdota(m1(k)) = temp;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = alpha*z(m1(i),m1(kp)) + beta*z(m1(i),m1(k));
             z(m1(i),m1(kp)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(kp));
             z(m1(i),m1(k)) = temp;
@@ -307,7 +352,7 @@ line_170:
         vmultc(m1(k)) = vsave;
     }
     temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         temp = temp + z(m1(i),m1(nact))*a(m1(i),m1(kk));
     }
     if (temp == 0.0) goto line_490;
@@ -323,15 +368,15 @@ line_210:
     if (mcon > m and kk != mcon) {
         k = nact-1;
         sp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             sp = sp + z(m1(i),m1(k)) * a(m1(i),m1(kk));
         }
         temp = math::sqrt(sp*sp + zdota(m1(nact))*zdota(m1(nact)));
-        ScalarType alpha = zdota(m1(nact)) / temp;
-        ScalarType beta = sp / temp;
+        alpha = zdota(m1(nact)) / temp;
+        beta = sp / temp;
         zdota(m1(nact)) = alpha*zdota(m1(k));
         zdota(m1(k)) = temp;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = alpha * z(m1(i),m1(nact)) + beta*z(m1(i),m1(k));
             z(m1(i),m1(nact)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(nact));
             z(m1(i),m1(k)) = temp;
@@ -348,12 +393,12 @@ line_210:
     if (mcon > m) goto line_320;
     kk = iact(m1(nact));
     temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         temp = temp + sdirn(m1(i))*a(m1(i),m1(kk));
     }
     temp = temp - 1.0;
     temp = temp / zdota(m1(nact));
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         sdirn(m1(i)) = sdirn(m1(i)) - temp*z(m1(i),m1(nact));
     }
     goto line_340;
@@ -368,7 +413,7 @@ line_270:
         kp = k + 1;
         kk = iact(m1(kp));
         sp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             sp = sp + z(m1(i),m1(k))*a(m1(i),m1(kk));
         }
         temp = math::sqrt(sp*sp + math::pow(zdota(m1(kp)), 2.0));
@@ -376,7 +421,7 @@ line_270:
         beta = sp / temp;
         zdota(m1(kp)) = alpha*zdota(m1(k));
         zdota(m1(k)) = temp;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = alpha*z(m1(i),m1(kp)) + beta*z(m1(i),m1(k));
             z(m1(i),m1(kp)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(kp));
             z(m1(i),m1(k)) = temp;
@@ -394,10 +439,10 @@ line_270:
     // change to the current vector of variables.
     if (mcon > m) goto line_320;
     temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         temp = temp + sdirn(m1(i))*z(m1(i), m1(nact+1));
     }
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         sdirn(m1(i)) = sdirn(m1(i)) - temp*z(m1(i), m1(nact+1));
     }
     goto line_340;
@@ -405,7 +450,7 @@ line_270:
     // Pick the next search direction of stage two.
 line_320:
     temp = 1.0 / zdota(m1(nact));
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         sdirn(m1(i)) = temp*z(m1(i), m1(nact));
     }
 
@@ -415,10 +460,10 @@ line_320:
     // calculation. Further, we skip the step if it could be zero within a
     // reasonable tolerance for computer rounding errors.
 line_340:
-    ScalarType dd = rho*rho;
-    ScalarType sd = 0.0;
-    ScalarType ss = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    dd = rho*rho;
+    sd = 0.0;
+    ss = 0.0;
+    for (i=1; i<=n; i++) {
         if (math::fabs(dx(m1(i))) >= 1.0e-6*rho) dd = dd - math::pow(dx(m1(i)), 2.0);
         sd = sd + dx(m1(i))*sdirn(m1(i));
         ss = ss + math::pow(sdirn(m1(i)), 2.0);
@@ -426,8 +471,8 @@ line_340:
     if (dd <= 0.0) goto line_490;
     temp = math::sqrt(ss*dd);
     if (math::fabs(sd) >= 1.0e-6*temp) temp = math::sqrt(ss*dd + sd*sd);
-    ScalarType stpful = dd / (temp + sd);
-    ScalarType step = stpful;
+    stpful = dd / (temp + sd);
+    step = stpful;
     if (mcon == m) {
         acca = step + 0.1*resmax;
         accb = step + 0.2*resmax;
@@ -439,16 +484,16 @@ line_340:
     // RESMAX to the corresponding maximum residual if stage one is being done.
     // Because DXNEW will be changed during the calculation of some Lagrange
     // multipliers, it will be restored to the following value later.
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         dxnew(m1(i)) = dx(m1(i)) + step*sdirn(m1(i));
     }
     if (mcon == m) {
         resold = resmax;
         resmax = 0.0;
-        for (IntegralType k=1; k<=nact; k++) {
+        for (k=1; k<=nact; k++) {
             kk = iact(m1(k));
             temp = b(m1(kk));
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 temp = temp - a(m1(i),m1(kk))*dxnew(m1(i));
             }
             resmax = math::fmax(resmax, temp);
@@ -461,9 +506,9 @@ line_340:
     // Lagrange multipliers.
     k = nact;
 line_390:
-    ScalarType zdotw = 0.0;
-    ScalarType zdwabs = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    zdotw = 0.0;
+    zdwabs = 0.0;
+    for (i=1; i<=n; i++) {
         temp = z(m1(i),m1(k))*dxnew(m1(i));
         zdotw = zdotw + temp;
         zdwabs = zdwabs + math::fabs(temp);
@@ -474,7 +519,7 @@ line_390:
     vmultd(m1(k)) = zdotw/zdota(m1(k));
     if (k >= 2) {
         kk = iact(m1(k));
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             dxnew(m1(i)) = dxnew(m1(i)) - vmultd(m1(k))*a(m1(i),m1(kk));
         }
         k = k-1;
@@ -483,16 +528,16 @@ line_390:
     if (mcon > m) vmultd(m1(nact)) = math::fmax(0.0, vmultd(m1(nact)));
 
     // Complete VMULTC by finding the new constraint residuals.
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         dxnew(m1(i)) = dx(m1(i)) + step*sdirn(m1(i));
     }
     if (mcon > nact) {
         kl = nact + 1;
-        for (IntegralType k=kl; k<=mcon; kl++) {
+        for (k=kl; k<=mcon; kl++) {
             kk = iact(m1(k));
             sum = resmax-b(m1(kk));
             sumabs = resmax + math::fabs(b(m1(kk)));
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 temp = a(m1(i),m1(kk))*dxnew(m1(i));
                 sum = sum + temp;
                 sumabs = sumabs + math::fabs(temp);
@@ -507,7 +552,7 @@ line_390:
     // Calculate the fraction of the step from DX to DXNEW that will be taken.
     ratio = 1.0;
     icon = 0;
-    for (IntegralType k=1; k<=mcon; k++) {
+    for (k=1; k<=mcon; k++) {
         if (vmultd(m1(k)) < 0.0) {
             temp = vmultc(m1(k))/(vmultc(m1(k)) - vmultd(m1(k)));
             if (temp < ratio) {
@@ -519,10 +564,10 @@ line_390:
 
     // Update DX, VMULTC and RESMAX.
     temp = 1.0 - ratio;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         dx(m1(i)) = temp*dx(m1(i)) + ratio*dxnew(m1(i));
     }
-    for (IntegralType k=1; k<=mcon; k++) {
+    for (k=1; k<=mcon; k++) {
         vmultc(m1(k)) = math::fmax(0.0, temp*vmultc(m1(k)) + ratio*vmultd(m1(k)));
     }
     if (mcon == m) resmax = resold + ratio*(resmax - resold);
@@ -565,10 +610,10 @@ void cobylb(
     // IntegralType iprint,
     IntegralType maxfun,
     ScalarWorkViewType con,
-    ScalarWorkViewType sim,
-    ScalarWorkViewType simi,
-    ScalarWorkViewType datmat,
-    ScalarWorkViewType a,
+    ScalarWorkViewType sim_flat,
+    ScalarWorkViewType simi_flat,
+    ScalarWorkViewType datmat_flat,
+    ScalarWorkViewType a_flat,
     ScalarWorkViewType vsig,
     ScalarWorkViewType veta,
     ScalarWorkViewType sigbar,
@@ -586,8 +631,8 @@ void cobylb(
     // Wrap unmanaged Views around the flattened Views
     // so that we can do 2D indexing.
     Kokkos::View<
-        ScalarWorkViewType::value_type**,
-        ScalarWorkViewType::memory_space,
+        typename ScalarWorkViewType::value_type**,
+        typename ScalarWorkViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
     >
     sim(sim_flat.data(), n, n+1),
@@ -595,11 +640,54 @@ void cobylb(
     datmat(datmat_flat.data(), mpp, n+1),
     a(a_flat.data(), n, m+1);
 
+    // LTM F77 implicitly declares all of these.
+    // We gotta explicitly declare them.
+    IntegralType
+        i,
+        j,
+        k,
+        nbest,
+        l,
+        iflag,
+        izdota,
+        ivmc,
+        isdirn,
+        idxnew,
+        ivmd,
+        ifull;
+    ScalarType
+        resmax,
+        phimin,
+        tempa,
+        error,
+        parsig,
+        pareta,
+        wsig,
+        weta,
+        cvmaxp,
+        cvmaxm,
+        sum,
+        dxsign,
+        resnew,
+        barmu,
+        phi,
+        prerec,
+        prerem,
+        vmold,
+        vmnew,
+        trured,
+        ratio,
+        edgmax,
+        denom,
+        cmin,
+        cmax,
+        f;
+
     namespace math =
 #if KOKKOS_VERSION < 30700
-        Kokkos;
-#else
         Kokkos::Experimental;
+#else
+        Kokkos;
 #endif
 
     // Set the initial values of some parameters. The last column of SIM holds
@@ -620,9 +708,9 @@ void cobylb(
 
     IntegralType nfvals = 0;
     ScalarType temp = 1.0/rho;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         sim(m1(i), m1(np)) = x(m1(i));
-        for (IntegralType j=1; j<=n; j++) {
+        for (j=1; j<=n; j++) {
             simi(m1(i),m1(j)) = 0.0;
         }
         sim(m1(i),m1(i)) = rho;
@@ -640,9 +728,9 @@ line_40:
     }
     nfvals = nfvals + 1;
     (*calcfc)(n, m, x, f, con);
-    ScalarType resmax = 0.0;
+     resmax = 0.0;
     if (m > 0) {
-        for (IntegralType k=1; k<=m; k++) {
+        for (k=1; k<=m; k++) {
             resmax = math::fmax(resmax, -con(m1(k)));
         }
     }
@@ -657,7 +745,7 @@ line_40:
     // each column being the values of the constraint functions (if any)
     // followed by the objective function and the greatest constraint violation
     // at the vertex.
-    for (IntegralType k=1; k<=mpp; k++) {
+    for (k=1; k<=mpp; k++) {
         datmat(m1(k), m1(jdrop)) = con(m1(k));
     }
     if (nfvals > np) {
@@ -673,14 +761,14 @@ line_40:
         }
         else {
             sim(m1(jdrop), m1(np)) = x(m1(jdrop));
-            for (IntegralType k=1; k<=mpp; k++) {
+            for (k=1; k<=mpp; k++) {
                 datmat(m1(k), m1(jdrop)) = datmat(m1(k), m1(np));
                 datmat(m1(k), m1(np)) = con(m1(k));
             }
-            for (IntegralType k=1; k<=jdrop; k++) {
+            for (k=1; k<=jdrop; k++) {
                 sim(m1(jdrop), m1(k)) = -rho;
                 temp = 0.0;
-                for (IntegralType i=k; i<=jdrop; i++) {
+                for (i=k; i<=jdrop; i++) {
                     temp = temp - simi(m1(i),m1(k));
                 }
                 simi(m1(jdrop), m1(k)) = temp;
@@ -697,9 +785,9 @@ line_130:
 
     // Identify the optimal vertex of the current simplex.
 line_140:
-    ScalarType phimin = datmat(m1(mp), m1(np)) + parmu * datmat(m1(mpp),m1(np));
-    IntegralType nbest = np;
-    for (IntegralType j=1; j<=n; j++) {
+    phimin = datmat(m1(mp), m1(np)) + parmu * datmat(m1(mpp),m1(np));
+    nbest = np;
+    for (j=1; j<=n; j++) {
         temp = datmat(m1(mp),m1(j)) + parmu * datmat(m1(mpp), m1(j));
         if (temp < phimin) {
             nbest = j;
@@ -715,17 +803,17 @@ line_140:
     // Switch the best vertex into pole position if it is not there already,
     // and also update SIM, SIMI and DATMAT.
     if (nbest <= n) {
-        for (IntegralType i=1; i<=mpp; i++) {
+        for (i=1; i<=mpp; i++) {
             temp = datmat(m1(i), m1(np));
             datmat(m1(i), m1(np)) = datmat(m1(i), m1(nbest));
             datmat(m1(i), m1(nbest)) = temp;
         }
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = sim(m1(i), m1(nbest));
             sim(m1(i), m1(nbest)) = 0.0;
             sim(m1(i), m1(np)) = sim(m1(i), m1(np)) + temp;
-            ScalarType tempa = 0.0;
-            for (IntegralType k=1; k<=n; k++) {
+            tempa = 0.0;
+            for (k=1; k<=n; k++) {
                 sim(m1(i), m1(k)) = sim(m1(i), m1(k)) - temp;
                 tempa = tempa - simi(m1(k), m1(i));
                 simi(m1(nbest), m1(i)) = tempa;
@@ -735,14 +823,14 @@ line_140:
 
     // Make an error return if SIGI is a poor approximation to the inverse of
     // the leading N by N submatrix of SIG.
-    ScalarType error = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
-        for (IntegralType j=1; j<=n; j++) {
+    error = 0.0;
+    for (i=1; i<=n; i++) {
+        for (j=1; j<=n; j++) {
             temp = 0.0;
             if (i == j) {
                 temp = temp - 1.0;
             }
-            for (IntegralType k=1; k<=n; k++) {
+            for (k=1; k<=n; k++) {
                 temp = temp + simi(m1(i),m1(k))*sim(m1(k),m1(j));
             }
             error = math::fmax(error, math::fabs(temp));
@@ -756,14 +844,14 @@ line_140:
     // and constraint functions, placing minus the objective function gradient
     // after the constraint gradients in the array A. The vector W is used for
     // working space.
-    for (IntegralType k=1; k<=mp; k++) {
+    for (k=1; k<=mp; k++) {
         con(m1(k)) = -datmat(m1(k), m1(np));
-        for (IntegralType j=1; j<=n; j++) {
+        for (j=1; j<=n; j++) {
             w(m1(j)) = datmat(m1(k),m1(j)) + con(m1(k));
         }
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = 0.0;
-            for (IntegralType j=1; j<=n; j++) {
+            for (j=1; j<=n; j++) {
                 temp = temp + w(m1(j))*simi(m1(j), m1(i));
             }
             if (k == mp) {
@@ -775,13 +863,13 @@ line_140:
 
     // Calculate the values of sigma and eta, and set IFLAG=0 if the current
     // simplex is not acceptable.
-    IntegralType iflag = 1;
-    ScalarType parsig = alpha*rho;
-    ScalarType pareta = beta*rho;
-    for (IntegralType j=1; j<=n; j++) {
-        ScalarType wsig = 0.0;
-        ScalarType weta = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+    iflag = 1;
+    parsig = alpha*rho;
+    pareta = beta*rho;
+    for (j=1; j<=n; j++) {
+        wsig = 0.0;
+        weta = 0.0;
+        for (i=1; i<=n; i++) {
             wsig = wsig + simi(m1(j),m1(i))*simi(m1(j),m1(i));
             weta = weta + sim(m1(i),m1(j)) *sim(m1(i),m1(j));
         }
@@ -799,14 +887,14 @@ line_140:
     }
     jdrop = 0;
     temp = pareta;
-    for (IntegralType j=1; j<=n; j++) {
+    for (j=1; j<=n; j++) {
         if (veta(m1(j)) > temp) {
             jdrop = j;
             temp = veta(m1(j));
         }
     }
     if (jdrop == 0) {
-        for (IntegralType j=1; j<=n; j++) {
+        for (j=1; j<=n; j++) {
             if (vsig(m1(j)) < temp) {
                 jdrop = j;
                 temp = vsig(j);
@@ -816,15 +904,15 @@ line_140:
 
     // Calculate the step to the new vertex and its sign.
     temp = gamma*rho*vsig(m1(jdrop));
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         dx(m1(i)) = temp*simi(m1(jdrop), m1(i));
     }
-    ScalarType cvmaxp = 0.0;
-    ScalarType cvmaxm = 0.0;
-    ScalarType sum = 0.0;
-    for (IntegralType k=1; k<=mp; k++) {
+    cvmaxp = 0.0;
+    cvmaxm = 0.0;
+    sum = 0.0;
+    for (k=1; k<=mp; k++) {
         sum = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             sum = sum + a(m1(i),m1(k))*dx(m1(i));
         }
         if (k < mp) {
@@ -833,28 +921,28 @@ line_140:
             cvmaxm = math::fmax(cvmaxm,  sum-temp);
         }
     }
-    ScalarType dxsign = 1.0;
+    dxsign = 1.0;
     if (parmu*(cvmaxp-cvmaxm) > sum+sum) {
         dxsign = -1.0;
     }
 
     // Update the elements of SIM and SIMI, and set the next X.
     temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         dx(m1(i)) = dxsign*dx(m1(i));
         sim(m1(i),m1(jdrop)) = dx(m1(i));
         temp = temp + simi(m1(jdrop),m1(i))*dx(m1(i));
     }
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         simi(m1(jdrop),m1(i)) = simi(m1(jdrop),m1(i))/temp;
     }
-    for (IntegralType j=1; j<=n; j++) {
+    for (j=1; j<=n; j++) {
         if (j != jdrop) {
             temp = 0.0;
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 temp = temp + simi(m1(j),m1(i))*dx(m1(i));
             }
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 simi(m1(j),m1(i)) = simi(m1(j),m1(i)) - temp*simi(m1(jdrop),m1(i));
             }
         }
@@ -864,12 +952,12 @@ line_140:
 
     // Calculate DX=x(*)-x(0). Branch if the length of DX is less than 0.5*RHO.
 line_370:
-    IntegralType izdota = n*n;
-    IntegralType ivmc = izdota + n;
-    IntegralType isdirn = ivmc + mp;
-    IntegralType idxnew = isdirn + n;
-    IntegralType ivmd = idxnew + n;
-    IntegralType ifull = 0;
+    izdota = n*n;
+    ivmc = izdota + n;
+    isdirn = ivmc + mp;
+    idxnew = isdirn + n;
+    ivmd = idxnew + n;
+    ifull = 0;
     trstlp(
         n,
         m,
@@ -888,7 +976,7 @@ line_370:
     );
     if (ifull == 0) {
         temp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = temp + math::pow(dx(m1(i)), 2.0);
         }
         if (temp < 0.25 * rho * rho) {
@@ -899,11 +987,11 @@ line_370:
 
     // Predict the change to F and the new maximum constraint violation if the
     // variables are altered from x(0) to x(0)+DX.
-    ScalarType resnew = 0.0;
+    resnew = 0.0;
     con(m1(mp)) = 0.0;
-    for (IntegralType k=1; k<=mp; k++) {
+    for (k=1; k<=mp; k++) {
         sum = con(m1(k));
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             sum = sum - a(m1(i),m1(k))*dx(m1(i));
         }
         if (k < mp) {
@@ -915,15 +1003,15 @@ line_370:
     // optimal vertex. Otherwise PREREM and PREREC will be set to the predicted
     // reductions in the merit function and the maximum constraint violation
     // respectively.
-    ScalarType barmu = 0.0;
-    ScalarType prerec = datmat(m1(mpp), m1(np)) - resnew;
+    barmu = 0.0;
+    prerec = datmat(m1(mpp), m1(np)) - resnew;
     if (prerec > 0.0) {
         barmu = sum/prerec;
     }
     if (parmu < 1.5 * barmu) {
         parmu = 2.0*barmu;
-        ScalarType phi = datmat(m1(mp),m1(np)) + parmu*datmat(m1(mpp),m1(np));
-        for (IntegralType j=1; j<=n; j++) {
+        phi = datmat(m1(mp),m1(np)) + parmu*datmat(m1(mpp),m1(np));
+        for (j=1; j<=n; j++) {
             temp = datmat(m1(mp),m1(j)) + parmu*datmat(m1(mpp),m1(j));
             if (temp < phi) {
                 goto line_140;
@@ -935,20 +1023,20 @@ line_370:
             }
         }
     }
-    ScalarType prerem = parmu*prerec - sum;
+    prerem = parmu*prerec - sum;
 
     // Calculate the constraint and objective functions at x(*). Then find the
     // actual reduction in the merit function.
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         x(m1(i)) = sim(m1(i),m1(np)) + dx(m1(i));
     }
     ibrnch=1;
     goto line_40;
 line_440:
-    ScalarType vmold = datmat(m1(mp),m1(np)) + parmu*datmat(m1(mpp),m1(np));
-    ScalarType mvnew = f + parmu*resmax;
-    ScalarType trured = vmold - vmnew;
-    if (parmu == 0.0 and f == datmat(m1(mp),m1(np)) {
+    vmold = datmat(m1(mp),m1(np)) + parmu*datmat(m1(mpp),m1(np));
+    vmnew = f + parmu*resmax;
+    trured = vmold - vmnew;
+    if (parmu == 0.0 and f == datmat(m1(mp),m1(np))) {
         prerem = prerec;
         trured = datmat(m1(mpp),m1(np)) - resmax;
     }
@@ -957,14 +1045,14 @@ line_440:
     // vertices of the current simplex, the change being mandatory if TRURED is
     // positive. Firstly, JDROP is set to the index of the vertex that is to be
     // replaced.
-    ScalarType ratio = 0.0;
+    ratio = 0.0;
     if (trured <= 0.0) {
         ratio = 1.0;
     }
     jdrop = 0;
-    for (IntegralType j=1; j<=n; j++) {
+    for (j=1; j<=n; j++) {
         temp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
+        for (i=1; i<=n; i++) {
             temp = temp + simi(m1(j),m1(i))*dx(m1(i));
         }
         temp = math::fabs(temp);
@@ -976,14 +1064,14 @@ line_440:
     }
 
     // Calculate the value of ell.
-    ScalarType edgmax = delta * rho;
-    IntegralType l=0;
-    for (IntegralType j=1; j<=n; j++) {
+    edgmax = delta * rho;
+    l=0;
+    for (j=1; j<=n; j++) {
         if (sigbar(m1(j)) >= parsig or sigbar(m1(j)) >= vsig(m1(j))) {
             temp = veta(m1(j));
             if (trured > 0.0) {
                 temp = 0.0;
-                for (IntegralType i=1; i<=n; i++) {
+                for (i=1; i<=n; i++) {
                     temp = temp + math::pow(dx(m1(i)) - sim(m1(i),m1(j)), 2.0);
                 }
                 temp = math::sqrt(temp);
@@ -1003,25 +1091,25 @@ line_440:
 
     // Revise the simplex by updating the elements of SIM, SIMI and DATMAT.
     temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         sim(m1(i), m1(jdrop)) = dx(m1(i));
         temp = temp + simi(m1(jdrop),m1(i)) * dx(m1(i));
     }
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         simi(m1(jdrop),m1(i)) = simi(m1(jdrop),m1(i)) / temp;
     }
-    for (IntegralType j=1; j<=n; j++) {
+    for (j=1; j<=n; j++) {
         if (j != jdrop) {
             temp = 0.0;
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 temp = temp + simi(m1(j),m1(i)) * dx(m1(i));
             }
-            for (IntegralType i=1; i<=n; i++) {
+            for (i=1; i<=n; i++) {
                 simi(m1(j),m1(i)) = simi(m1(j),m1(i)) - temp * simi(m1(jdrop),m1(i));
             }
         }
     }
-    for (IntegralType k=1; k<=mpp; k++) {
+    for (k=1; k<=mpp; k++) {
         datmat(m1(k),m1(jdrop)) = con(m1(k));
     }
 
@@ -1042,12 +1130,12 @@ line_550:
             rho = rhoend;
         }
         if (parmu > 0.0) {
-            ScalarType denom = 0.0;
-            ScalarType cmin, cmax;
-            for (IntegralType k=1; k<=mp; k++) {
+            denom = 0.0;
+            cmin, cmax;
+            for (k=1; k<=mp; k++) {
                 cmin = datmat(m1(k),m1(np));
                 cmax = cmin;
-                for (IntegralType i=1; i<=n; i++) {
+                for (i=1; i<=n; i++) {
                     cmin = math::fmin(cmin, datmat(m1(k),m1(i)));
                     cmax = math::fmax(cmax, datmat(m1(k),m1(i)));
                 }
@@ -1062,7 +1150,7 @@ line_550:
                 }
             }
             if (denom == 0.0) {
-                parmu = 0.0
+                parmu = 0.0;
             }
             else if (cmax-cmin < parmu*denom) {
                 parmu = (cmax-cmin)/denom;
@@ -1074,7 +1162,7 @@ line_550:
     // Return the best calculated values of the variables.
     if (ifull == 1) goto line_620;
 line_600:
-    for (IntegralType i=1; i<=n; i++) {
+    for (i=1; i<=n; i++) {
         x(m1(i)) = sim(m1(i), m1(np));
     }
     f = datmat(m1(mp),m1(np));
@@ -1155,7 +1243,7 @@ void cobyla(
     SolutionViewType x,
     ScalarType rhobeg,
     ScalarType rhoend,
-    // IntegralType iprint,
+    // iprint,
     IntegralType maxfun,
     ScalarWorkViewType w,
     IntegralWorkViewType iact,
