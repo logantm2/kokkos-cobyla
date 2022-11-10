@@ -32,116 +32,517 @@ IntegralType m1(IntegralType i) {
     return i - 1;
 }
 
-/*
-This subroutine minimizes an objective function F(X) subject to M
-inequality constraints on X, where X is a vector of variables that has
-N components. The algorithm employs linear approximations to the
-objective and constraint functions, the approximations being formed by
-linear interpolation at N+1 points in the space of the variables.
-We regard these interpolation points as vertices of a simplex. The
-parameter RHO controls the size of the simplex and it is reduced
-automatically from RHOBEG to RHOEND. For each RHO the subroutine tries
-to achieve a good vector of variables for the current size, and then
-RHO is reduced until the value RHOEND is reached. Therefore RHOBEG and
-RHOEND should be set to reasonable initial changes to and the required
-accuracy in the variables respectively, but this accuracy should be
-viewed as a subject for experimentation because it is not guaranteed.
-The subroutine has an advantage over many of its competitors, however,
-which is that it treats each constraint individually when calculating
-a change to the variables, instead of lumping the constraints together
-into a single penalty function. The name of the subroutine is derived
-from the phrase Constrained Optimization BY Linear Approximations.
-
-The user must set the values of N, M, RHOBEG and RHOEND, and must
-provide an initial vector of variables in X. Further, the value of
-IPRINT should be set to 0, 1, 2 or 3, which controls the amount of
-printing during the calculation. Specifically, there is no output if
-IPRINT=0 and there is output only at the end of the calculation if
-IPRINT=1. Otherwise each new value of RHO and SIGMA is printed.
-Further, the vector of variables and some function information are
-given either when RHO is reduced or when each new value of F(X) is
-computed in the cases IPRINT=2 or IPRINT=3 respectively. Here SIGMA
-is a penalty parameter, it being assumed that a change to X is an
-improvement if it reduces the merit function
-           F(X)+SIGMA*MAX(0.0,-C1(X),-C2(X),...,-CM(X)),
-where C1,C2,...,CM denote the constraint functions that should become
-nonnegative eventually, at least to the precision of RHOEND. In the
-printed output the displayed term that is multiplied by SIGMA is
-called MAXCV, which stands for 'MAXimum Constraint Violation'. The
-argument MAXFUN is an integer variable that must be set by the user to a
-limit on the number of calls of CALCFC, the purpose of this routine being
-given below. The value of MAXFUN will be altered to the number of calls
-of CALCFC that are made. The arguments W and IACT provide real and
-integer arrays that are used as working space. Their lengths must be at
-least N*(3*N+2*M+11)+4*M+6 and M+1 respectively.
-
-In order to define the objective and constraint functions, we require
-a subroutine that has the name and arguments
-           SUBROUTINE CALCFC (N,M,X,F,CON)
-           DIMENSION X(*),CON(*)  .
-The values of N and M are fixed and have been defined already, while
-X is now the current vector of variables. The subroutine should return
-the objective and constraint functions at X in F and CON(1),CON(2),
-...,CON(M). Note that we are trying to adjust X so that F(X) is as
-small as possible subject to the constraint functions being nonnegative.
-
-Partition the working space array W to provide the storage that is needed
-for the main calculation.
-*/
-
 template <
     typename IntegralType,
-    typename SolutionViewType,
     typename ScalarType,
     typename ScalarWorkViewType,
     typename IntegralWorkViewType
 >
 KOKKOS_INLINE_FUNCTION
-void cobyla(
+void trstlp(
     IntegralType n,
     IntegralType m,
-    SolutionViewType x,
-    ScalarType rhobeg,
-    ScalarType rhoend,
-    // IntegralType iprint,
-    IntegralType maxfun,
-    ScalarWorkViewType w,
-    IntegralWorkViewType iact
+    ScalarWorkViewType a,
+    ScalarWorkViewType b,
+    ScalarType rho,
+    ScalarWorkViewType dx,
+    IntegralType &ifull,
+    IntegralWorkViewType iact,
+    ScalarWorkViewType z,
+    ScalarWorkViewType zdota,
+    ScalarWorkViewType vmultc,
+    ScalarWorkViewType sdirn,
+    ScalarWorkViewType dxnew,
+    ScalarWorkViewType vmultd
 ) {
-    using SizeType = typename ScalarWorkViewType::size_type;
-    SizeType mpp = m+2;
-    SizeType isim = mpp;
-    SizeType isimi = isim + n*n + n;
-    SizeType idatm = isimi + n*n;
-    SizeType ia = idatm + n*mpp + mpp;
-    SizeType ivsig = ia + m*n + n;
-    SizeType iveta = ivsig + n;
-    SizeType isigb = iveta + n;
-    SizeType idx = isigb + n;
-    SizeType iwork = idx + n;
-    SizeType total_size = n*(3*n + 2*m + 11) + 4*m + 6;
+    // This subroutine calculates an N-component vector DX by applying the
+    // following two stages. In the first stage, DX is set to the shortest
+    // vector that minimizes the greatest violation of the constraints
+    // A(1,K)*DX(1)+A(2,K)*DX(2)+...+A(N,K)*DX(N) .GE. B(K), K=2,3,...,M,
+    // subject to the Euclidean length of DX being at most RHO. If its length is
+    // strictly less than RHO, then we use the resultant freedom in DX to
+    // minimize the objective function
+    //         -A(1,M+1)*DX(1)-A(2,M+1)*DX(2)-...-A(N,M+1)*DX(N)
+    // subject to no increase in any greatest constraint violation. This
+    // notation allows the gradient of the objective function to be regarded as
+    // the gradient of a constraint. Therefore the two stages are distinguished
+    // by MCON .EQ. M and MCON .GT. M respectively. It is possible that a
+    // degeneracy may prevent DX from attaining the target length RHO. Then the
+    // value IFULL=0 would be set, but usually IFULL=1 on return.
 
-    cobylb(
-        n,
-        m,
-        mpp,
-        x,
-        rhobeg,
-        rhoend,
-        // iprint,
-        maxfun,
-        Kokkos::subview(w, Kokkos::make_pair(0, isim)),
-        Kokkos::subview(w, Kokkos::make_pair(isim, isimi)),
-        Kokkos::subview(w, Kokkos::make_pair(isimi, idatm)),
-        Kokkos::subview(w, Kokkos::make_pair(idatm, ia)),
-        Kokkos::subview(w, Kokkos::make_pair(ia, ivsig)),
-        Kokkos::subview(w, Kokkos::make_pair(ivsig, iveta)),
-        Kokkos::subview(w, Kokkos::make_pair(iveta, isigb)),
-        Kokkos::subview(w, Kokkos::make_pair(isigb, idx)),
-        Kokkos::subview(w, Kokkos::make_pair(idx, iwork)),
-        Kokkos::subview(w, Kokkos::make_pair(iwork, total_size)),
-        iact
-    );
+    // In general NACT is the number of constraints in the active set and
+    // IACT(1),...,IACT(NACT) are their indices, while the remainder of IACT
+    // contains a permutation of the remaining constraint indices. Further, Z is
+    // an orthogonal matrix whose first NACT columns can be regarded as the
+    // result of Gram-Schmidt applied to the active constraint gradients. For
+    // J=1,2,...,NACT, the number ZDOTA(J) is the scalar product of the J-th
+    // column of Z with the gradient of the J-th active constraint. DX is the
+    // current vector of variables and here the residuals of the active
+    // constraints should be zero. Further, the active constraints have
+    // nonnegative Lagrange multipliers that are held at the beginning of
+    // VMULTC. The remainder of this vector holds the residuals of the inactive
+    // constraints at DX, the ordering of the components of VMULTC being in
+    // agreement with the permutation of the indices of the constraints that is
+    // in IACT. All these residuals are nonnegative, which is achieved by the
+    // shift RESMAX that makes the least residual zero.all the active
+    // constraint violations by one simultaneously.
+
+    namespace math =
+#if KOKKOS_VERSION < 30700
+        Kokkos;
+#else
+        Kokkos::Experimental;
+#endif
+
+    // LTM Wrap unmanaged Views around the flattened Views
+    // so that we can do 2D indexing.
+    Kokkos::View<
+        ScalarWorkViewType::value_type**,
+        ScalarWorkViewType::memory_space,
+        Kokkos::MemoryTraits<Kokkos::Unmanaged>
+    >
+    a(a_flat.data(), n, m+1),
+    z(z_flat.data(), n, n);
+
+    // Initialize Z and some other variables. The value of RESMAX will be
+    // appropriate to DX=0, while ICON will be the index of a most violated
+    // constraint if RESMAX is positive. Usually during the first stage the
+    // vector SDIRN gives a search direction that reduces
+    ifull = 1;
+    IntegralType mcon = m;
+    IntegralType nact = 0;
+    ScalarType resmax = 0.0;
+    IntegralType icon = 0;
+    for (IntegralType i=1; i<=n; i++) {
+        for (IntegralType j=1; j<=n; j++) {
+            z(m1(i),m1(j)) = 0.0;
+        }
+        z(m1(i),m1(i)) = 1.0;
+        dx(m1(i)) = 0.0;
+    }
+    if (m >= 1) {
+        for (IntegralType k=1; k<=m; k++) {
+            if (b(m1(k)) > resmax) {
+                resmax = b(m1(k))
+                icon = k;
+            }
+        }
+        for (IntegralType k=1; k<=m; k++) {
+            iact(m1(k)) = k;
+            vmultc(m1(k)) = resmax - b(m1(k));
+        }
+    }
+    if (resmax == 0.0) goto line_480;
+    for (IntegralType i=1; i<=n; i++) {
+        sdirn(m1(i)) = 0.0;
+    }
+
+    // End the current stage of the calculation if 3 consecutive iterations
+    // have either failed to reduce the best calculated value of the objective
+    // function or to increase the number of active constraints since the best
+    // value was calculated. This strategy prevents cycling, but there is a
+    // remote possibility that it will cause premature termination.
+line_60:
+    ScalarType optold = 0.0;
+    ScalarType optnew;
+    IntegralType icount = 0;
+    if (mcon == m) {
+        optnew = resmax;
+    }
+    else {
+        optnew = 0.0;
+        for (IntegralType i=1; i<=n; i++) {
+            optnew = optnew - dx(m1(i))*a(m1(i),m1(mcon));
+        }
+    }
+    IntegralType nactx = 0;
+    if (icount == 0 or optnew < optold) {
+        optold = optnew;
+        nactx = nact;
+        icount = 3;
+    }
+    else if (nact > nactx) {
+        nactx = nact;
+        icount = 3;
+    }
+    else {
+        icount = icount-1;
+        if (icount == 0) goto line_490;
+    }
+
+    // If ICON exceeds NACT, then we add the constraint with index IACT(ICON) to
+    // the active set. Apply Givens rotations so that the last N-NACT-1 columns
+    // of Z are orthogonal to the gradient of the new constraint, a scalar
+    // product being set to zero if its nonzero value could be due to computer
+    // rounding errors. The array DXNEW is used for working space.
+    if (icon <= nact) goto line_260;
+    IntegralType kk = iact(m1(icon));
+    for (IntegralType i=1; i<=n; i++) {
+        dxnew(m1(i)) = a(m1(i),m1(kk));
+    }
+    ScalarType tot = 0.0;
+    IntegralType k = n;
+    IntegralType kp;
+    ScalarType temp;
+    ScalarType alpha;
+    ScalarType beta;
+line_100:
+    if (k > nact) {
+        ScalarType sp = 0.0;
+        ScalarType spabs = 0.0;
+        for (IntegralType i=1; i<=n; i++) {
+            temp = z(m1(i),m1(k))*dxnew(m1(i));
+            sp = sp + temp;
+            spabs = spabs + math::fabs(temp);
+        }
+        ScalarType acca = spabs + 0.1 * math::fabs(sp);
+        ScalarType accb = spabs + 0.2 * math::fabs(sp);
+        if (spabs >= acca or acca >= accb) sp = 0.0;
+        if (tot == 0.0) {
+            tot = sp;
+        }
+        else {
+            kp = k+1;
+            temp = math::sqrt(sp*sp + tot*tot);
+            alpha = sp/temp;
+            beta = tot/temp;
+            tot = temp;
+            for (IntegralType i=1; i<=n; i++) {
+                temp = alpha * z(m1(i),m1(k)) + beta * z(m1(i),m1(kp));
+                z(m1(i),m1(kp)) = alpha * z(m1(i),m1(kp)) - beta * z(m1(i),m1(k));
+                z(m1(i),m1(k)) = temp;
+            }
+        }
+        k = k-1;
+        goto line_100;
+    }
+
+    // Add the new constraint if this can be done without a deletion from the
+    // active set.
+    if (tot != 0.0) {
+        nact = nact+1;
+        zdota(m1(nact)) = tot;
+        vmultc(m1(icon)) = vmultc(m1(nact));
+        vmultc(m1(nact)) = 0.0;
+        goto line_210;
+    }
+
+    // The next instruction is reached if a deletion has to be made from the
+    // active set in order to make room for the new active constraint, because
+    // the new constraint gradient is a linear combination of the gradients of
+    // the old active constraints. Set the elements of VMULTD to the multipliers
+    // of the linear combination. Further, set IOUT to the index of the
+    // constraint to be deleted, but branch if no suitable index can be found.
+    ScalarType ratio = -1.0;
+    k = nact;
+line_130:
+    ScalarType zdotv = 0.0;
+    ScalarType zdvabs = 0.0;
+    IntegralType kw;
+    for (IntegralType i=1; i<=n; i++) {
+        temp = z(m1(i),m1(k))*dxnew(m1(i));
+        zdotv = zdotv + temp;
+        zdvabs = zdvabs + math::fabs(temp);
+    }
+    acca = zdvabs + 0.1*math::fabs(zdotv);
+    accb = zdvabs + 0.2*math::fabs(zdotv);
+    if (zdvabs < acca and acca < accb) {
+        temp = zdotv/zdota(m1(k));
+        if (temp > 0.0 and iact(m1(k)) <= m) {
+            tempa = vmultc(m1(k))/temp;
+            if (ratio < 0.0 or tempa < ratio) {
+                ratio = tempa;
+                iout = k;
+            }
+        }
+        if (k >= 2) {
+            kw = iact(m1(k));
+            for (IntegralType i=1; i<=n; i++) {
+                dxnew(m1(i)) = dxnew(m1(i)) - temp*a(m1(i),m1(kw));
+            }
+        }
+        vmultd(m1(k)) = temp;
+    }
+    else {
+        vmultd(m1(k)) = 0.0
+    }
+    k = k-1;
+    if (k > 0) goto line_130;
+    if (ratio < 0.0) goto line_490;
+
+    // Revise the Lagrange multipliers and reorder the active constraints so
+    // that the one to be replaced is at the end of the list. Also calculate the
+    // new value of ZDOTA(NACT) and branch if it is not acceptable.
+    for (IntegralType k=1; k<=nact; k++) {
+        vmultc(m1(k)) = math::fmax(0.0, vmultc(m1(k)) - ratio*vmultd(m1(k)));
+    }
+    if (icon < nact) {
+        IntegralType isave = iact(m1(icon));
+        ScalarType vsave = vmultc(m1(icon));
+        k = icon;
+line_170:
+        IntegralType kp = k + 1;
+        kw = iact(m1(kp));
+        ScalarType sp = 0.0;
+        for (IntegralType i=1; i<=n; i++) {
+            sp = sp + z(m1(i),m1(k)) * a(m1(i),m1(kw));
+        }
+        temp = math::sqrt(sp*sp + math::pow(zdota(m1(kp)), 2.0));
+        ScalarType alpha = zdota(m1(kp))/temp;
+        ScalarType beta = sp/temp;
+        zdota(m1(kp)) = alpha*zdota(m1(k));
+        zdota(m1(k)) = temp;
+        for (IntegralType i=1; i<=n; i++) {
+            temp = alpha*z(m1(i),m1(kp)) + beta*z(m1(i),m1(k));
+            z(m1(i),m1(kp)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(kp));
+            z(m1(i),m1(k)) = temp;
+        }
+        iact(m1(k)) = kw;
+        vmultc(m1(k)) = vmultc(m1(kp));
+        k = kp;
+        if (k < nact) goto line_170;
+        iact(m1(k)) = isave;
+        vmultc(m1(k)) = vsave;
+    }
+    temp = 0.0;
+    for (IntegralType i=1; i<=n; i++) {
+        temp = temp + z(m1(i),m1(nact))*a(m1(i),m1(kk));
+    }
+    if (temp == 0.0) goto line_490;
+    zdota(m1(nact)) = temp;
+    vmultc(m1(icon)) = 0.0;
+    vmultc(m1(nact)) = ratio;
+
+    // Update IACT and ensure that the objective function continues to be
+    // treated as the last active constraint when MCON>M.
+line_210:
+    iact(m1(icon)) = iact(m1(nact));
+    iact(m1(nact)) = kk;
+    if (mcon > m and kk != mcon) {
+        k = nact-1;
+        sp = 0.0;
+        for (IntegralType i=1; i<=n; i++) {
+            sp = sp + z(m1(i),m1(k)) * a(m1(i),m1(kk));
+        }
+        temp = math::sqrt(sp*sp + zdota(m1(nact))*zdota(m1(nact)));
+        ScalarType alpha = zdota(m1(nact)) / temp;
+        ScalarType beta = sp / temp;
+        zdota(m1(nact)) = alpha*zdota(m1(k));
+        zdota(m1(k)) = temp;
+        for (IntegralType i=1; i<=n; i++) {
+            temp = alpha * z(m1(i),m1(nact)) + beta*z(m1(i),m1(k));
+            z(m1(i),m1(nact)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(nact));
+            z(m1(i),m1(k)) = temp;
+        }
+        iact(m1(nact)) = iact(m1(k));
+        iact(m1(k)) = kk;
+        temp = vmultc(m1(k));
+        vmultc(m1(k)) = vmultc(m1(nact));
+        vmultc(m1(nact)) = temp;
+    }
+
+    // If stage one is in progress, then set SDIRN to the direction of the next
+    // change to the current vector of variables.
+    if (mcon > m) goto line_320;
+    kk = iact(m1(nact));
+    temp = 0.0;
+    for (IntegralType i=1; i<=n; i++) {
+        temp = temp + sdirn(m1(i))*a(m1(i),m1(kk));
+    }
+    temp = temp - 1.0;
+    temp = temp / zdota(m1(nact));
+    for (IntegralType i=1; i<=n; i++) {
+        sdirn(m1(i)) = sdirn(m1(i)) - temp*z(m1(i),m1(nact));
+    }
+    goto line_340;
+
+    // Delete the constraint that has the index IACT(ICON) from the active set.
+line_260:
+    if (icon < nact) {
+        isave = iact(m1(icon));
+        vsave = vmultc(m1(icon));
+        k = icon;
+line_270:
+        kp = k + 1;
+        kk = iact(m1(kp));
+        sp = 0.0;
+        for (IntegralType i=1; i<=n; i++) {
+            sp = sp + z(m1(i),m1(k))*a(m1(i),m1(kk));
+        }
+        temp = math::sqrt(sp*sp + math::pow(zdota(m1(kp)), 2.0));
+        alpha = zdota(m1(kp)) / temp;
+        beta = sp / temp;
+        zdota(m1(kp)) = alpha*zdota(m1(k));
+        zdota(m1(k)) = temp;
+        for (IntegralType i=1; i<=n; i++) {
+            temp = alpha*z(m1(i),m1(kp)) + beta*z(m1(i),m1(k));
+            z(m1(i),m1(kp)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(kp));
+            z(m1(i),m1(k)) = temp;
+        }
+        iact(m1(k)) = kk;
+        vmultc(m1(k)) = vmultc(m1(kp));
+        k = kp;
+        if (k < nact) goto line_270;
+        iact(m1(k)) = isave;
+        vmultc(m1(k)) = vsave;
+    }
+    nact = nact - 1;
+
+    // If stage one is in progress, then set SDIRN to the direction of the next
+    // change to the current vector of variables.
+    if (mcon > m) goto line_320;
+    temp = 0.0;
+    for (IntegralType i=1; i<=n; i++) {
+        temp = temp + sdirn(m1(i))*z(m1(i), m1(nact+1));
+    }
+    for (IntegralType i=1; i<=n; i++) {
+        sdirn(m1(i)) = sdirn(m1(i)) - temp*z(m1(i), m1(nact+1));
+    }
+    goto line_340;
+
+    // Pick the next search direction of stage two.
+line_320:
+    temp = 1.0 / zdota(m1(nact));
+    for (IntegralType i=1; i<=n; i++) {
+        sdirn(m1(i)) = temp*z(m1(i), m1(nact));
+    }
+
+    // Calculate the step to the boundary of the trust region or take the step
+    // that reduces RESMAX to zero. The two statements below that include the
+    // factor 1.0E-6 prevent some harmless underflows that occurred in a test
+    // calculation. Further, we skip the step if it could be zero within a
+    // reasonable tolerance for computer rounding errors.
+line_340:
+    ScalarType dd = rho*rho;
+    ScalarType sd = 0.0;
+    ScalarType ss = 0.0;
+    for (IntegralType i=1; i<=n; i++) {
+        if (math::fabs(dx(m1(i))) >= 1.0e-6*rho) dd = dd - math::pow(dx(m1(i)), 2.0);
+        sd = sd + dx(m1(i))*sdirn(m1(i));
+        ss = ss + math::pow(sdirn(m1(i)), 2.0);
+    }
+    if (dd <= 0.0) goto line_490;
+    temp = math::sqrt(ss*dd);
+    if (math::fabs(sd) >= 1.0e-6*temp) temp = math::sqrt(ss*dd + sd*sd);
+    ScalarType stpful = dd / (temp + sd);
+    ScalarType step = stpful;
+    if (mcon == m) {
+        acca = step + 0.1*resmax;
+        accb = step + 0.2*resmax;
+        if (step >= acca or acca >= accb) goto line_480;
+        step = math::fmin(step, resmax);
+    }
+
+    // Set DXNEW to the new variables if STEP is the steplength, and reduce
+    // RESMAX to the corresponding maximum residual if stage one is being done.
+    // Because DXNEW will be changed during the calculation of some Lagrange
+    // multipliers, it will be restored to the following value later.
+    for (IntegralType i=1; i<=n; i++) {
+        dxnew(m1(i)) = dx(m1(i)) + step*sdirn(m1(i));
+    }
+    if (mcon == m) {
+        resold = resmax;
+        resmax = 0.0;
+        for (IntegralType k=1; k<=nact; k++) {
+            kk = iact(m1(k));
+            temp = b(m1(kk));
+            for (IntegralType i=1; i<=n; i++) {
+                temp = temp - a(m1(i),m1(kk))*dxnew(m1(i));
+            }
+            resmax = math::fmax(resmax, temp);
+        }
+    }
+
+    // Set VMULTD to the VMULTC vector that would occur if DX became DXNEW. A
+    // device is included to force VMULTD(K)=0.0 if deviations from this value
+    // can be attributed to computer rounding errors. First calculate the new
+    // Lagrange multipliers.
+    k = nact;
+line_390:
+    ScalarType zdotw = 0.0;
+    ScalarType zdwabs = 0.0;
+    for (IntegralType i=1; i<=n; i++) {
+        temp = z(m1(i),m1(k))*dxnew(m1(i));
+        zdotw = zdotw + temp;
+        zdwabs = zdwabs + math::fabs(temp);
+    }
+    acca = zdwabs + 0.1*math::fabs(zdotw);
+    accb = zdwabs + 0.2*math::fabs(zdotw);
+    if (zdwabs >= acca or acca >= accb) zdotw = 0.0;
+    vmultd(m1(k)) = zdotw/zdota(m1(k));
+    if (k >= 2) {
+        kk = iact(m1(k));
+        for (IntegralType i=1; i<=n; i++) {
+            dxnew(m1(i)) = dxnew(m1(i)) - vmultd(m1(k))*a(m1(i),m1(kk));
+        }
+        k = k-1;
+        goto line_390;
+    }
+    if (mcon > m) vmultd(m1(nact)) = math::fmax(0.0, vmultd(m1(nact)));
+
+    // Complete VMULTC by finding the new constraint residuals.
+    for (IntegralType i=1; i<=n; i++) {
+        dxnew(m1(i)) = dx(m1(i)) + step*sdirn(m1(i));
+    }
+    if (mcon > nact) {
+        kl = nact + 1;
+        for (IntegralType k=kl; k<=mcon; kl++) {
+            kk = iact(m1(k));
+            sum = resmax-b(m1(kk));
+            sumabs = resmax + math::fabs(b(m1(kk)));
+            for (IntegralType i=1; i<=n; i++) {
+                temp = a(m1(i),m1(kk))*dxnew(m1(i));
+                sum = sum + temp;
+                sumabs = sumabs + math::fabs(temp);
+            }
+            acca = sumabs + 0.1*math::fabs(sum);
+            accb = sumabs + 0.2*math::fabs(sum);
+            if (sumabs >= acca or acca >= accb) sum = 0.0;
+            vmultd(m1(k)) = sum;
+        }
+    }
+
+    // Calculate the fraction of the step from DX to DXNEW that will be taken.
+    ratio = 1.0;
+    icon = 0;
+    for (IntegralType k=1; k<=mcon; k++) {
+        if (vmultd(m1(k)) < 0.0) {
+            temp = vmultc(m1(k))/(vmultc(m1(k)) - vmultd(m1(k)));
+            if (temp < ratio) {
+                ratio = temp;
+                icon = k;
+            }
+        }
+    }
+
+    // Update DX, VMULTC and RESMAX.
+    temp = 1.0 - ratio;
+    for (IntegralType i=1; i<=n; i++) {
+        dx(m1(i)) = temp*dx(m1(i)) + ratio*dxnew(m1(i));
+    }
+    for (IntegralType k=1; k<=mcon; k++) {
+        vmultc(m1(k)) = math::fmax(0.0, temp*vmultc(m1(k)) + ratio*vmultd(m1(k)));
+    }
+    if (mcon == m) resmax = resold + ratio*(resmax - resold);
+
+    // If the full step is not acceptable then begin another iteration.
+    // Otherwise switch to stage two or end the calculation.
+    if (icon > 0) goto line_70;
+    if (step == stpful) goto line_500;
+line_480:
+    mcon = m + 1;
+    icon = mcon;
+    iact(m1(mcon)) = mcon;
+    vmultc(m1(mcon)) = 0.0;
+    goto line_60;
+
+    // We employ any freedom that may be available to reduce the objective
+    // function before returning a DX whose length is less than RHO.
+line_490:
+    if (mcon == m) goto line_480;
+    ifull = 0;
+line_500:
+    return;
 }
 
 template <
@@ -674,517 +1075,116 @@ line_620:
     return;
 }
 
+/*
+This subroutine minimizes an objective function F(X) subject to M
+inequality constraints on X, where X is a vector of variables that has
+N components. The algorithm employs linear approximations to the
+objective and constraint functions, the approximations being formed by
+linear interpolation at N+1 points in the space of the variables.
+We regard these interpolation points as vertices of a simplex. The
+parameter RHO controls the size of the simplex and it is reduced
+automatically from RHOBEG to RHOEND. For each RHO the subroutine tries
+to achieve a good vector of variables for the current size, and then
+RHO is reduced until the value RHOEND is reached. Therefore RHOBEG and
+RHOEND should be set to reasonable initial changes to and the required
+accuracy in the variables respectively, but this accuracy should be
+viewed as a subject for experimentation because it is not guaranteed.
+The subroutine has an advantage over many of its competitors, however,
+which is that it treats each constraint individually when calculating
+a change to the variables, instead of lumping the constraints together
+into a single penalty function. The name of the subroutine is derived
+from the phrase Constrained Optimization BY Linear Approximations.
+
+The user must set the values of N, M, RHOBEG and RHOEND, and must
+provide an initial vector of variables in X. Further, the value of
+IPRINT should be set to 0, 1, 2 or 3, which controls the amount of
+printing during the calculation. Specifically, there is no output if
+IPRINT=0 and there is output only at the end of the calculation if
+IPRINT=1. Otherwise each new value of RHO and SIGMA is printed.
+Further, the vector of variables and some function information are
+given either when RHO is reduced or when each new value of F(X) is
+computed in the cases IPRINT=2 or IPRINT=3 respectively. Here SIGMA
+is a penalty parameter, it being assumed that a change to X is an
+improvement if it reduces the merit function
+           F(X)+SIGMA*MAX(0.0,-C1(X),-C2(X),...,-CM(X)),
+where C1,C2,...,CM denote the constraint functions that should become
+nonnegative eventually, at least to the precision of RHOEND. In the
+printed output the displayed term that is multiplied by SIGMA is
+called MAXCV, which stands for 'MAXimum Constraint Violation'. The
+argument MAXFUN is an integer variable that must be set by the user to a
+limit on the number of calls of CALCFC, the purpose of this routine being
+given below. The value of MAXFUN will be altered to the number of calls
+of CALCFC that are made. The arguments W and IACT provide real and
+integer arrays that are used as working space. Their lengths must be at
+least N*(3*N+2*M+11)+4*M+6 and M+1 respectively.
+
+In order to define the objective and constraint functions, we require
+a subroutine that has the name and arguments
+           SUBROUTINE CALCFC (N,M,X,F,CON)
+           DIMENSION X(*),CON(*)  .
+The values of N and M are fixed and have been defined already, while
+X is now the current vector of variables. The subroutine should return
+the objective and constraint functions at X in F and CON(1),CON(2),
+...,CON(M). Note that we are trying to adjust X so that F(X) is as
+small as possible subject to the constraint functions being nonnegative.
+
+Partition the working space array W to provide the storage that is needed
+for the main calculation.
+*/
+
 template <
     typename IntegralType,
+    typename SolutionViewType,
     typename ScalarType,
     typename ScalarWorkViewType,
     typename IntegralWorkViewType
 >
 KOKKOS_INLINE_FUNCTION
-void trstlp(
+void cobyla(
     IntegralType n,
     IntegralType m,
-    ScalarWorkViewType a,
-    ScalarWorkViewType b,
-    ScalarType rho,
-    ScalarWorkViewType dx,
-    IntegralType &ifull,
-    IntegralWorkViewType iact,
-    ScalarWorkViewType z,
-    ScalarWorkViewType zdota,
-    ScalarWorkViewType vmultc,
-    ScalarWorkViewType sdirn,
-    ScalarWorkViewType dxnew,
-    ScalarWorkViewType vmultd
+    SolutionViewType x,
+    ScalarType rhobeg,
+    ScalarType rhoend,
+    // IntegralType iprint,
+    IntegralType maxfun,
+    ScalarWorkViewType w,
+    IntegralWorkViewType iact
 ) {
-    // This subroutine calculates an N-component vector DX by applying the
-    // following two stages. In the first stage, DX is set to the shortest
-    // vector that minimizes the greatest violation of the constraints
-    // A(1,K)*DX(1)+A(2,K)*DX(2)+...+A(N,K)*DX(N) .GE. B(K), K=2,3,...,M,
-    // subject to the Euclidean length of DX being at most RHO. If its length is
-    // strictly less than RHO, then we use the resultant freedom in DX to
-    // minimize the objective function
-    //         -A(1,M+1)*DX(1)-A(2,M+1)*DX(2)-...-A(N,M+1)*DX(N)
-    // subject to no increase in any greatest constraint violation. This
-    // notation allows the gradient of the objective function to be regarded as
-    // the gradient of a constraint. Therefore the two stages are distinguished
-    // by MCON .EQ. M and MCON .GT. M respectively. It is possible that a
-    // degeneracy may prevent DX from attaining the target length RHO. Then the
-    // value IFULL=0 would be set, but usually IFULL=1 on return.
+    using SizeType = typename ScalarWorkViewType::size_type;
+    SizeType mpp = m+2;
+    SizeType isim = mpp;
+    SizeType isimi = isim + n*n + n;
+    SizeType idatm = isimi + n*n;
+    SizeType ia = idatm + n*mpp + mpp;
+    SizeType ivsig = ia + m*n + n;
+    SizeType iveta = ivsig + n;
+    SizeType isigb = iveta + n;
+    SizeType idx = isigb + n;
+    SizeType iwork = idx + n;
+    SizeType total_size = n*(3*n + 2*m + 11) + 4*m + 6;
 
-    // In general NACT is the number of constraints in the active set and
-    // IACT(1),...,IACT(NACT) are their indices, while the remainder of IACT
-    // contains a permutation of the remaining constraint indices. Further, Z is
-    // an orthogonal matrix whose first NACT columns can be regarded as the
-    // result of Gram-Schmidt applied to the active constraint gradients. For
-    // J=1,2,...,NACT, the number ZDOTA(J) is the scalar product of the J-th
-    // column of Z with the gradient of the J-th active constraint. DX is the
-    // current vector of variables and here the residuals of the active
-    // constraints should be zero. Further, the active constraints have
-    // nonnegative Lagrange multipliers that are held at the beginning of
-    // VMULTC. The remainder of this vector holds the residuals of the inactive
-    // constraints at DX, the ordering of the components of VMULTC being in
-    // agreement with the permutation of the indices of the constraints that is
-    // in IACT. All these residuals are nonnegative, which is achieved by the
-    // shift RESMAX that makes the least residual zero.all the active
-    // constraint violations by one simultaneously.
-
-    namespace math =
-#if KOKKOS_VERSION < 30700
-        Kokkos;
-#else
-        Kokkos::Experimental;
-#endif
-
-    // LTM Wrap unmanaged Views around the flattened Views
-    // so that we can do 2D indexing.
-    Kokkos::View<
-        ScalarWorkViewType::value_type**,
-        ScalarWorkViewType::memory_space,
-        Kokkos::MemoryTraits<Kokkos::Unmanaged>
-    >
-    a(a_flat.data(), n, m+1),
-    z(z_flat.data(), n, n);
-
-    // Initialize Z and some other variables. The value of RESMAX will be
-    // appropriate to DX=0, while ICON will be the index of a most violated
-    // constraint if RESMAX is positive. Usually during the first stage the
-    // vector SDIRN gives a search direction that reduces
-    ifull = 1;
-    IntegralType mcon = m;
-    IntegralType nact = 0;
-    ScalarType resmax = 0.0;
-    IntegralType icon = 0;
-    for (IntegralType i=1; i<=n; i++) {
-        for (IntegralType j=1; j<=n; j++) {
-            z(m1(i),m1(j)) = 0.0;
-        }
-        z(m1(i),m1(i)) = 1.0;
-        dx(m1(i)) = 0.0;
-    }
-    if (m >= 1) {
-        for (IntegralType k=1; k<=m; k++) {
-            if (b(m1(k)) > resmax) {
-                resmax = b(m1(k))
-                icon = k;
-            }
-        }
-        for (IntegralType k=1; k<=m; k++) {
-            iact(m1(k)) = k;
-            vmultc(m1(k)) = resmax - b(m1(k));
-        }
-    }
-    if (resmax == 0.0) goto line_480;
-    for (IntegralType i=1; i<=n; i++) {
-        sdirn(m1(i)) = 0.0;
-    }
-
-    // End the current stage of the calculation if 3 consecutive iterations
-    // have either failed to reduce the best calculated value of the objective
-    // function or to increase the number of active constraints since the best
-    // value was calculated. This strategy prevents cycling, but there is a
-    // remote possibility that it will cause premature termination.
-line_60:
-    ScalarType optold = 0.0;
-    ScalarType optnew;
-    IntegralType icount = 0;
-    if (mcon == m) {
-        optnew = resmax;
-    }
-    else {
-        optnew = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
-            optnew = optnew - dx(m1(i))*a(m1(i),m1(mcon));
-        }
-    }
-    IntegralType nactx = 0;
-    if (icount == 0 or optnew < optold) {
-        optold = optnew;
-        nactx = nact;
-        icount = 3;
-    }
-    else if (nact > nactx) {
-        nactx = nact;
-        icount = 3;
-    }
-    else {
-        icount = icount-1;
-        if (icount == 0) goto line_490;
-    }
-
-    // If ICON exceeds NACT, then we add the constraint with index IACT(ICON) to
-    // the active set. Apply Givens rotations so that the last N-NACT-1 columns
-    // of Z are orthogonal to the gradient of the new constraint, a scalar
-    // product being set to zero if its nonzero value could be due to computer
-    // rounding errors. The array DXNEW is used for working space.
-    if (icon <= nact) goto line_260;
-    IntegralType kk = iact(m1(icon));
-    for (IntegralType i=1; i<=n; i++) {
-        dxnew(m1(i)) = a(m1(i),m1(kk));
-    }
-    ScalarType tot = 0.0;
-    IntegralType k = n;
-    IntegralType kp;
-    ScalarType temp;
-    ScalarType alpha;
-    ScalarType beta;
-line_100:
-    if (k > nact) {
-        ScalarType sp = 0.0;
-        ScalarType spabs = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
-            temp = z(m1(i),m1(k))*dxnew(m1(i));
-            sp = sp + temp;
-            spabs = spabs + math::fabs(temp);
-        }
-        ScalarType acca = spabs + 0.1 * math::fabs(sp);
-        ScalarType accb = spabs + 0.2 * math::fabs(sp);
-        if (spabs >= acca or acca >= accb) sp = 0.0;
-        if (tot == 0.0) {
-            tot = sp;
-        }
-        else {
-            kp = k+1;
-            temp = math::sqrt(sp*sp + tot*tot);
-            alpha = sp/temp;
-            beta = tot/temp;
-            tot = temp;
-            for (IntegralType i=1; i<=n; i++) {
-                temp = alpha * z(m1(i),m1(k)) + beta * z(m1(i),m1(kp));
-                z(m1(i),m1(kp)) = alpha * z(m1(i),m1(kp)) - beta * z(m1(i),m1(k));
-                z(m1(i),m1(k)) = temp;
-            }
-        }
-        k = k-1;
-        goto line_100;
-    }
-
-    // Add the new constraint if this can be done without a deletion from the
-    // active set.
-    if (tot != 0.0) {
-        nact = nact+1;
-        zdota(m1(nact)) = tot;
-        vmultc(m1(icon)) = vmultc(m1(nact));
-        vmultc(m1(nact)) = 0.0;
-        goto line_210;
-    }
-
-    // The next instruction is reached if a deletion has to be made from the
-    // active set in order to make room for the new active constraint, because
-    // the new constraint gradient is a linear combination of the gradients of
-    // the old active constraints. Set the elements of VMULTD to the multipliers
-    // of the linear combination. Further, set IOUT to the index of the
-    // constraint to be deleted, but branch if no suitable index can be found.
-    ScalarType ratio = -1.0;
-    k = nact;
-line_130:
-    ScalarType zdotv = 0.0;
-    ScalarType zdvabs = 0.0;
-    IntegralType kw;
-    for (IntegralType i=1; i<=n; i++) {
-        temp = z(m1(i),m1(k))*dxnew(m1(i));
-        zdotv = zdotv + temp;
-        zdvabs = zdvabs + math::fabs(temp);
-    }
-    acca = zdvabs + 0.1*math::fabs(zdotv);
-    accb = zdvabs + 0.2*math::fabs(zdotv);
-    if (zdvabs < acca and acca < accb) {
-        temp = zdotv/zdota(m1(k));
-        if (temp > 0.0 and iact(m1(k)) <= m) {
-            tempa = vmultc(m1(k))/temp;
-            if (ratio < 0.0 or tempa < ratio) {
-                ratio = tempa;
-                iout = k;
-            }
-        }
-        if (k >= 2) {
-            kw = iact(m1(k));
-            for (IntegralType i=1; i<=n; i++) {
-                dxnew(m1(i)) = dxnew(m1(i)) - temp*a(m1(i),m1(kw));
-            }
-        }
-        vmultd(m1(k)) = temp;
-    }
-    else {
-        vmultd(m1(k)) = 0.0
-    }
-    k = k-1;
-    if (k > 0) goto line_130;
-    if (ratio < 0.0) goto line_490;
-
-    // Revise the Lagrange multipliers and reorder the active constraints so
-    // that the one to be replaced is at the end of the list. Also calculate the
-    // new value of ZDOTA(NACT) and branch if it is not acceptable.
-    for (IntegralType k=1; k<=nact; k++) {
-        vmultc(m1(k)) = math::fmax(0.0, vmultc(m1(k)) - ratio*vmultd(m1(k)));
-    }
-    if (icon < nact) {
-        IntegralType isave = iact(m1(icon));
-        ScalarType vsave = vmultc(m1(icon));
-        k = icon;
-line_170:
-        IntegralType kp = k + 1;
-        kw = iact(m1(kp));
-        ScalarType sp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
-            sp = sp + z(m1(i),m1(k)) * a(m1(i),m1(kw));
-        }
-        temp = math::sqrt(sp*sp + math::pow(zdota(m1(kp)), 2.0));
-        ScalarType alpha = zdota(m1(kp))/temp;
-        ScalarType beta = sp/temp;
-        zdota(m1(kp)) = alpha*zdota(m1(k));
-        zdota(m1(k)) = temp;
-        for (IntegralType i=1; i<=n; i++) {
-            temp = alpha*z(m1(i),m1(kp)) + beta*z(m1(i),m1(k));
-            z(m1(i),m1(kp)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(kp));
-            z(m1(i),m1(k)) = temp;
-        }
-        iact(m1(k)) = kw;
-        vmultc(m1(k)) = vmultc(m1(kp));
-        k = kp;
-        if (k < nact) goto line_170;
-        iact(m1(k)) = isave;
-        vmultc(m1(k)) = vsave;
-    }
-    temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
-        temp = temp + z(m1(i),m1(nact))*a(m1(i),m1(kk));
-    }
-    if (temp == 0.0) goto line_490;
-    zdota(m1(nact)) = temp;
-    vmultc(m1(icon)) = 0.0;
-    vmultc(m1(nact)) = ratio;
-
-    // Update IACT and ensure that the objective function continues to be
-    // treated as the last active constraint when MCON>M.
-line_210:
-    iact(m1(icon)) = iact(m1(nact));
-    iact(m1(nact)) = kk;
-    if (mcon > m and kk != mcon) {
-        k = nact-1;
-        sp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
-            sp = sp + z(m1(i),m1(k)) * a(m1(i),m1(kk));
-        }
-        temp = math::sqrt(sp*sp + zdota(m1(nact))*zdota(m1(nact)));
-        ScalarType alpha = zdota(m1(nact)) / temp;
-        ScalarType beta = sp / temp;
-        zdota(m1(nact)) = alpha*zdota(m1(k));
-        zdota(m1(k)) = temp;
-        for (IntegralType i=1; i<=n; i++) {
-            temp = alpha * z(m1(i),m1(nact)) + beta*z(m1(i),m1(k));
-            z(m1(i),m1(nact)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(nact));
-            z(m1(i),m1(k)) = temp;
-        }
-        iact(m1(nact)) = iact(m1(k));
-        iact(m1(k)) = kk;
-        temp = vmultc(m1(k));
-        vmultc(m1(k)) = vmultc(m1(nact));
-        vmultc(m1(nact)) = temp;
-    }
-
-    // If stage one is in progress, then set SDIRN to the direction of the next
-    // change to the current vector of variables.
-    if (mcon > m) goto line_320;
-    kk = iact(m1(nact));
-    temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
-        temp = temp + sdirn(m1(i))*a(m1(i),m1(kk));
-    }
-    temp = temp - 1.0;
-    temp = temp / zdota(m1(nact));
-    for (IntegralType i=1; i<=n; i++) {
-        sdirn(m1(i)) = sdirn(m1(i)) - temp*z(m1(i),m1(nact));
-    }
-    goto line_340;
-
-    // Delete the constraint that has the index IACT(ICON) from the active set.
-line_260:
-    if (icon < nact) {
-        isave = iact(m1(icon));
-        vsave = vmultc(m1(icon));
-        k = icon;
-line_270:
-        kp = k + 1;
-        kk = iact(m1(kp));
-        sp = 0.0;
-        for (IntegralType i=1; i<=n; i++) {
-            sp = sp + z(m1(i),m1(k))*a(m1(i),m1(kk));
-        }
-        temp = math::sqrt(sp*sp + math::pow(zdota(m1(kp)), 2.0));
-        alpha = zdota(m1(kp)) / temp;
-        beta = sp / temp;
-        zdota(m1(kp)) = alpha*zdota(m1(k));
-        zdota(m1(k)) = temp;
-        for (IntegralType i=1; i<=n; i++) {
-            temp = alpha*z(m1(i),m1(kp)) + beta*z(m1(i),m1(k));
-            z(m1(i),m1(kp)) = alpha*z(m1(i),m1(k)) - beta*z(m1(i),m1(kp));
-            z(m1(i),m1(k)) = temp;
-        }
-        iact(m1(k)) = kk;
-        vmultc(m1(k)) = vmultc(m1(kp));
-        k = kp;
-        if (k < nact) goto line_270;
-        iact(m1(k)) = isave;
-        vmultc(m1(k)) = vsave;
-    }
-    nact = nact - 1;
-
-    // If stage one is in progress, then set SDIRN to the direction of the next
-    // change to the current vector of variables.
-    if (mcon > m) goto line_320;
-    temp = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
-        temp = temp + sdirn(m1(i))*z(m1(i), m1(nact+1));
-    }
-    for (IntegralType i=1; i<=n; i++) {
-        sdirn(m1(i)) = sdirn(m1(i)) - temp*z(m1(i), m1(nact+1));
-    }
-    goto line_340;
-
-    // Pick the next search direction of stage two.
-line_320:
-    temp = 1.0 / zdota(m1(nact));
-    for (IntegralType i=1; i<=n; i++) {
-        sdirn(m1(i)) = temp*z(m1(i), m1(nact));
-    }
-
-    // Calculate the step to the boundary of the trust region or take the step
-    // that reduces RESMAX to zero. The two statements below that include the
-    // factor 1.0E-6 prevent some harmless underflows that occurred in a test
-    // calculation. Further, we skip the step if it could be zero within a
-    // reasonable tolerance for computer rounding errors.
-line_340:
-    ScalarType dd = rho*rho;
-    ScalarType sd = 0.0;
-    ScalarType ss = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
-        if (math::fabs(dx(m1(i))) >= 1.0e-6*rho) dd = dd - math::pow(dx(m1(i)), 2.0);
-        sd = sd + dx(m1(i))*sdirn(m1(i));
-        ss = ss + math::pow(sdirn(m1(i)), 2.0);
-    }
-    if (dd <= 0.0) goto line_490;
-    temp = math::sqrt(ss*dd);
-    if (math::fabs(sd) >= 1.0e-6*temp) temp = math::sqrt(ss*dd + sd*sd);
-    ScalarType stpful = dd / (temp + sd);
-    ScalarType step = stpful;
-    if (mcon == m) {
-        acca = step + 0.1*resmax;
-        accb = step + 0.2*resmax;
-        if (step >= acca or acca >= accb) goto line_480;
-        step = math::fmin(step, resmax);
-    }
-
-    // Set DXNEW to the new variables if STEP is the steplength, and reduce
-    // RESMAX to the corresponding maximum residual if stage one is being done.
-    // Because DXNEW will be changed during the calculation of some Lagrange
-    // multipliers, it will be restored to the following value later.
-    for (IntegralType i=1; i<=n; i++) {
-        dxnew(m1(i)) = dx(m1(i)) + step*sdirn(m1(i));
-    }
-    if (mcon == m) {
-        resold = resmax;
-        resmax = 0.0;
-        for (IntegralType k=1; k<=nact; k++) {
-            kk = iact(m1(k));
-            temp = b(m1(kk));
-            for (IntegralType i=1; i<=n; i++) {
-                temp = temp - a(m1(i),m1(kk))*dxnew(m1(i));
-            }
-            resmax = math::fmax(resmax, temp);
-        }
-    }
-
-    // Set VMULTD to the VMULTC vector that would occur if DX became DXNEW. A
-    // device is included to force VMULTD(K)=0.0 if deviations from this value
-    // can be attributed to computer rounding errors. First calculate the new
-    // Lagrange multipliers.
-    k = nact;
-line_390:
-    ScalarType zdotw = 0.0;
-    ScalarType zdwabs = 0.0;
-    for (IntegralType i=1; i<=n; i++) {
-        temp = z(m1(i),m1(k))*dxnew(m1(i));
-        zdotw = zdotw + temp;
-        zdwabs = zdwabs + math::fabs(temp);
-    }
-    acca = zdwabs + 0.1*math::fabs(zdotw);
-    accb = zdwabs + 0.2*math::fabs(zdotw);
-    if (zdwabs >= acca or acca >= accb) zdotw = 0.0;
-    vmultd(m1(k)) = zdotw/zdota(m1(k));
-    if (k >= 2) {
-        kk = iact(m1(k));
-        for (IntegralType i=1; i<=n; i++) {
-            dxnew(m1(i)) = dxnew(m1(i)) - vmultd(m1(k))*a(m1(i),m1(kk));
-        }
-        k = k-1;
-        goto line_390;
-    }
-    if (mcon > m) vmultd(m1(nact)) = math::fmax(0.0, vmultd(m1(nact)));
-
-    // Complete VMULTC by finding the new constraint residuals.
-    for (IntegralType i=1; i<=n; i++) {
-        dxnew(m1(i)) = dx(m1(i)) + step*sdirn(m1(i));
-    }
-    if (mcon > nact) {
-        kl = nact + 1;
-        for (IntegralType k=kl; k<=mcon; kl++) {
-            kk = iact(m1(k));
-            sum = resmax-b(m1(kk));
-            sumabs = resmax + math::fabs(b(m1(kk)));
-            for (IntegralType i=1; i<=n; i++) {
-                temp = a(m1(i),m1(kk))*dxnew(m1(i));
-                sum = sum + temp;
-                sumabs = sumabs + math::fabs(temp);
-            }
-            acca = sumabs + 0.1*math::fabs(sum);
-            accb = sumabs + 0.2*math::fabs(sum);
-            if (sumabs >= acca or acca >= accb) sum = 0.0;
-            vmultd(m1(k)) = sum;
-        }
-    }
-
-    // Calculate the fraction of the step from DX to DXNEW that will be taken.
-    ratio = 1.0;
-    icon = 0;
-    for (IntegralType k=1; k<=mcon; k++) {
-        if (vmultd(m1(k)) < 0.0) {
-            temp = vmultc(m1(k))/(vmultc(m1(k)) - vmultd(m1(k)));
-            if (temp < ratio) {
-                ratio = temp;
-                icon = k;
-            }
-        }
-    }
-
-    // Update DX, VMULTC and RESMAX.
-    temp = 1.0 - ratio;
-    for (IntegralType i=1; i<=n; i++) {
-        dx(m1(i)) = temp*dx(m1(i)) + ratio*dxnew(m1(i));
-    }
-    for (IntegralType k=1; k<=mcon; k++) {
-        vmultc(m1(k)) = math::fmax(0.0, temp*vmultc(m1(k)) + ratio*vmultd(m1(k)));
-    }
-    if (mcon == m) resmax = resold + ratio*(resmax - resold);
-
-    // If the full step is not acceptable then begin another iteration.
-    // Otherwise switch to stage two or end the calculation.
-    if (icon > 0) goto line_70;
-    if (step == stpful) goto line_500;
-line_480:
-    mcon = m + 1;
-    icon = mcon;
-    iact(m1(mcon)) = mcon;
-    vmultc(m1(mcon)) = 0.0;
-    goto line_60;
-
-    // We employ any freedom that may be available to reduce the objective
-    // function before returning a DX whose length is less than RHO.
-line_490:
-    if (mcon == m) goto line_480;
-    ifull = 0;
-line_500:
-    return;
+    cobylb(
+        n,
+        m,
+        mpp,
+        x,
+        rhobeg,
+        rhoend,
+        // iprint,
+        maxfun,
+        Kokkos::subview(w, Kokkos::make_pair(0, isim)),
+        Kokkos::subview(w, Kokkos::make_pair(isim, isimi)),
+        Kokkos::subview(w, Kokkos::make_pair(isimi, idatm)),
+        Kokkos::subview(w, Kokkos::make_pair(idatm, ia)),
+        Kokkos::subview(w, Kokkos::make_pair(ia, ivsig)),
+        Kokkos::subview(w, Kokkos::make_pair(ivsig, iveta)),
+        Kokkos::subview(w, Kokkos::make_pair(iveta, isigb)),
+        Kokkos::subview(w, Kokkos::make_pair(isigb, idx)),
+        Kokkos::subview(w, Kokkos::make_pair(idx, iwork)),
+        Kokkos::subview(w, Kokkos::make_pair(iwork, total_size)),
+        iact
+    );
 }
 
 #endif // KOKKOS_COBYLA_HPP
