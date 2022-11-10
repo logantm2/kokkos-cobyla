@@ -21,6 +21,57 @@ for more details.
 
 using namespace kokkos_cobyla;
 
-TEST(unit_tests, TrivialPass) {
-    ASSERT_TRUE(true);
+namespace math =
+#if KOKKOS_VERSION < 30700
+    Kokkos::Experimental;
+#else
+    Kokkos;
+#endif
+
+static constexpr double rhobeg = 0.5;
+static constexpr double rhoend = 0.001;
+static constexpr int maxfun = 2000;
+
+template<
+    typename IntegralType,
+    typename SolutionViewType,
+    typename ScalarType,
+    typename ScalarWorkViewType
+>
+KOKKOS_INLINE_FUNCTION
+void SimpleQuadratic(
+    IntegralType,
+    IntegralType,
+    SolutionViewType x,
+    ScalarType &f,
+    ScalarWorkViewType
+) {
+    f = 10.0 * math::pow(x(0) + 1.0, 2.0) + math::pow(x(1), 2.0);
+}
+
+TEST(unit_tests, SimpleQuadratic) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=2;
+    int m=0;
+    Kokkos::View<double*> x("SimpleQuadratic::x", 10);
+    Kokkos::View<double*> w("SimpleQuadratic::w", 3000);
+    Kokkos::View<int*> iact("SimpleQuadratic::iact", 51);
+
+    Kokkos::deep_copy(x, 1.0);
+
+    cobyla(
+        n,
+        m,
+        x,
+        rhobeg,
+        rhoend,
+        maxfun,
+        w,
+        iact,
+        SimpleQuadratic
+    );
+
+    EXPECT_DOUBLE_EQ(-1.0, x(0));
+    EXPECT_DOUBLE_EQ( 0.0, x(1));
 }
