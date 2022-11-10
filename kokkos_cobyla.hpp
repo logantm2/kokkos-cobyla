@@ -572,7 +572,14 @@ void cobylb(
     ScalarWorkViewType sigbar,
     ScalarWorkViewType dx,
     ScalarWorkViewType w,
-    IntegralWorkViewType iact
+    IntegralWorkViewType iact,
+    void (*calfc) (
+        IntegralType n_in,
+        IntegralType m_in,
+        SolutionViewType x_in,
+        ScalarType &f_in,
+        ScalarWorkViewType con_in
+    )
 ) {
     // Wrap unmanaged Views around the flattened Views
     // so that we can do 2D indexing.
@@ -630,7 +637,7 @@ line_40:
         goto line_600;
     }
     nfvals = nfvals + 1;
-    // LTM do CALCFC call here
+    (*calcfc)(n, m, x, f, con);
     ScalarType resmax = 0.0;
     if (m > 0) {
         for (IntegralType k=1; k<=m; k++) {
@@ -1149,7 +1156,14 @@ void cobyla(
     // IntegralType iprint,
     IntegralType maxfun,
     ScalarWorkViewType w,
-    IntegralWorkViewType iact
+    IntegralWorkViewType iact,
+    void (*calfc) (
+        IntegralType n_in,
+        IntegralType m_in,
+        SolutionViewType x_in,
+        ScalarType &f_in,
+        ScalarWorkViewType con_in
+    )
 ) {
     using SizeType = typename ScalarWorkViewType::size_type;
     SizeType mpp = m+2;
@@ -1183,7 +1197,8 @@ void cobyla(
         Kokkos::subview(w, Kokkos::make_pair(isigb, idx)),
         Kokkos::subview(w, Kokkos::make_pair(idx, iwork)),
         Kokkos::subview(w, Kokkos::make_pair(iwork, total_size)),
-        iact
+        iact,
+        calcfc
     );
 }
 
