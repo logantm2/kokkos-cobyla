@@ -1255,18 +1255,17 @@ void cobyla(
         ScalarWorkViewType con_in
     )
 ) {
-    using SizeType = typename ScalarWorkViewType::size_type;
-    SizeType mpp = m+2;
-    SizeType isim = mpp;
-    SizeType isimi = isim + n*n + n;
-    SizeType idatm = isimi + n*n;
-    SizeType ia = idatm + n*mpp + mpp;
-    SizeType ivsig = ia + m*n + n;
-    SizeType iveta = ivsig + n;
-    SizeType isigb = iveta + n;
-    SizeType idx = isigb + n;
-    SizeType iwork = idx + n;
-    SizeType total_size = n*(3*n + 2*m + 11) + 4*m + 6;
+    IntegralType mpp = m+2;
+    IntegralType isim = mpp;
+    IntegralType isimi = isim + n*n + n;
+    IntegralType idatm = isimi + n*n;
+    IntegralType ia = idatm + n*mpp + mpp;
+    IntegralType ivsig = ia + m*n + n;
+    IntegralType iveta = ivsig + n;
+    IntegralType isigb = iveta + n;
+    IntegralType idx = isigb + n;
+    IntegralType iwork = idx + n;
+    IntegralType total_size = n*(3*n + 2*m + 11) + 4*m + 6;
 
     cobylb(
         n,
