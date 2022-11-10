@@ -121,7 +121,7 @@ void trstlp(
         kw,
         kp,
         kl,
-        iout,
+        // iout,
         icount;
     ScalarType
         resmax,
@@ -191,8 +191,8 @@ void trstlp(
     // remote possibility that it will cause premature termination.
 line_60:
     optold = 0.0;
-    optnew;
     icount = 0;
+line_70:
     if (mcon == m) {
         optnew = resmax;
     }
@@ -229,10 +229,6 @@ line_60:
     }
     tot = 0.0;
     k = n;
-    kp;
-    temp;
-    alpha;
-    beta;
 line_100:
     if (k > nact) {
         sp = 0.0;
@@ -285,7 +281,6 @@ line_100:
 line_130:
     zdotv = 0.0;
     zdvabs = 0.0;
-    kw;
     for (i=1; i<=n; i++) {
         temp = z(m1(i),m1(k))*dxnew(m1(i));
         zdotv = zdotv + temp;
@@ -299,7 +294,7 @@ line_130:
             tempa = vmultc(m1(k))/temp;
             if (ratio < 0.0 or tempa < ratio) {
                 ratio = tempa;
-                iout = k;
+                // iout = k;
             }
         }
         if (k >= 2) {
@@ -596,7 +591,16 @@ template <
     typename IntegralType,
     typename SolutionViewType,
     typename ScalarType,
-    typename ScalarWorkViewType,
+    typename conViewType,
+    typename simViewType,
+    typename simiViewType,
+    typename datmatViewType,
+    typename aViewType,
+    typename vsigViewType,
+    typename vetaViewType,
+    typename sigbarViewType,
+    typename dxViewType,
+    typename wViewType,
     typename IntegralWorkViewType
 >
 KOKKOS_INLINE_FUNCTION
@@ -609,36 +613,47 @@ void cobylb(
     ScalarType rhoend,
     // IntegralType iprint,
     IntegralType maxfun,
-    ScalarWorkViewType con,
-    ScalarWorkViewType sim_flat,
-    ScalarWorkViewType simi_flat,
-    ScalarWorkViewType datmat_flat,
-    ScalarWorkViewType a_flat,
-    ScalarWorkViewType vsig,
-    ScalarWorkViewType veta,
-    ScalarWorkViewType sigbar,
-    ScalarWorkViewType dx,
-    ScalarWorkViewType w,
+    conViewType con,
+    simViewType sim_flat,
+    simiViewType simi_flat,
+    datmatViewType datmat_flat,
+    aViewType a_flat,
+    vsigViewType vsig,
+    vetaViewType veta,
+    sigbarViewType sigbar,
+    dxViewType dx,
+    wViewType w,
     IntegralWorkViewType iact,
     void (*calcfc) (
         IntegralType n_in,
         IntegralType m_in,
         SolutionViewType x_in,
         ScalarType &f_in,
-        ScalarWorkViewType con_in
+        conViewType con_in
     )
 ) {
     // Wrap unmanaged Views around the flattened Views
     // so that we can do 2D indexing.
     Kokkos::View<
-        typename ScalarWorkViewType::value_type**,
-        typename ScalarWorkViewType::memory_space,
+        typename simViewType::value_type**,
+        typename simViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
-    >
-    sim(sim_flat.data(), n, n+1),
-    simi(simi_flat.data(), n, n),
-    datmat(datmat_flat.data(), mpp, n+1),
-    a(a_flat.data(), n, m+1);
+    > sim(sim_flat.data(), n, n+1);
+    Kokkos::View<
+        typename simiViewType::value_type**,
+        typename simiViewType::memory_space,
+        Kokkos::MemoryTraits<Kokkos::Unmanaged>
+    > simi(simi_flat.data(), n, n);
+    Kokkos::View<
+        typename datmatViewType::value_type**,
+        typename datmatViewType::memory_space,
+        Kokkos::MemoryTraits<Kokkos::Unmanaged>
+    > datmat(datmat_flat.data(), mpp, n+1);
+    Kokkos::View<
+        typename aViewType::value_type**,
+        typename aViewType::memory_space,
+        Kokkos::MemoryTraits<Kokkos::Unmanaged>
+    > a(a_flat.data(), n, m+1);
 
     // LTM F77 implicitly declares all of these.
     // We gotta explicitly declare them.
@@ -695,8 +710,8 @@ void cobylb(
     // hold the displacements from the optimal vertex to the other vertices.
     // Further, SIMI holds the inverse of the matrix that is contained in the
     // first N columns of SIM.
-    IntegralType iptem = n < 5 ? n : 5;
-    IntegralType iptemp = iptem + 1;
+    // IntegralType iptem = n < 5 ? n : 5;
+    // IntegralType iptemp = iptem + 1;
     IntegralType np = n + 1;
     IntegralType mp = m + 1;
     ScalarType alpha = 0.25;
@@ -1131,7 +1146,6 @@ line_550:
         }
         if (parmu > 0.0) {
             denom = 0.0;
-            cmin, cmax;
             for (k=1; k<=mp; k++) {
                 cmin = datmat(m1(k),m1(np));
                 cmax = cmin;
@@ -1252,7 +1266,7 @@ void cobyla(
         IntegralType m_in,
         SolutionViewType x_in,
         ScalarType &f_in,
-        ScalarWorkViewType con_in
+        decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1))) con_in
     )
 ) {
     IntegralType mpp = m+2;
