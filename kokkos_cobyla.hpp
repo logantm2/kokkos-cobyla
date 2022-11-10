@@ -21,6 +21,17 @@ for more details.
 
 #include <Kokkos_Core.hpp>
 
+// LTM since the original F77 code indexes from 1,
+// encapsulate subtracting one from array indices here.
+// I don't wanna bother rewriting the code to not assume indexing from 1.
+// The right way to do this is probably to use Kokkos OffsetViews,
+// but I'm not confident how well those play with SubViews.
+template<typename IntegralType>
+KOKKOS_INLINE_FUNCTION
+IntegralType m1(IntegralType i) {
+    return i - 1;
+}
+
 /*
 This subroutine minimizes an objective function F(X) subject to M
 inequality constraints on X, where X is a vector of variables that has
@@ -85,7 +96,7 @@ template <
     typename ScalarWorkViewType,
     typename IntegralWorkViewType
 >
-KOKKOS_FUNCTION
+KOKKOS_INLINE_FUNCTION
 void cobyla(
     IntegralType n,
     IntegralType m,
@@ -140,7 +151,7 @@ template <
     typename ScalarWorkViewType,
     typename IntegralWorkViewType
 >
-KOKKOS_FUNCTION
+KOKKOS_INLINE_FUNCTION
 void cobylb(
     IntegralType n,
     IntegralType m,
@@ -669,7 +680,7 @@ template <
     typename ScalarWorkViewType,
     typename IntegralWorkViewType
 >
-KOKKOS_FUNCTION
+KOKKOS_INLINE_FUNCTION
 void trstlp(
     IntegralType n,
     IntegralType m,
