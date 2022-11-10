@@ -21,6 +21,8 @@ for more details.
 
 #include <Kokkos_Core.hpp>
 
+namespace kokkos_cobyla {
+
 // LTM since the original F77 code indexes from 1,
 // encapsulate subtracting one from array indices here.
 // I don't wanna bother rewriting the code to not assume indexing from 1.
@@ -1201,5 +1203,7 @@ void cobyla(
         calcfc
     );
 }
+
+} // namespace kokkos_cobyla
 
 #endif // KOKKOS_COBYLA_HPP
