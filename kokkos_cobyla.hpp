@@ -575,7 +575,7 @@ void cobylb(
     ScalarWorkViewType dx,
     ScalarWorkViewType w,
     IntegralWorkViewType iact,
-    void (*calfc) (
+    void (*calcfc) (
         IntegralType n_in,
         IntegralType m_in,
         SolutionViewType x_in,
@@ -1159,7 +1159,7 @@ void cobyla(
     IntegralType maxfun,
     ScalarWorkViewType w,
     IntegralWorkViewType iact,
-    void (*calfc) (
+    void (*calcfc) (
         IntegralType n_in,
         IntegralType m_in,
         SolutionViewType x_in,
