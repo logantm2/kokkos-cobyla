@@ -31,7 +31,7 @@ if(WITH_TESTS)
     add_subdirectory(test)
 else()
     find_package(Kokkos)
-    if(not Kokkos_FOUND)
+    if(NOT Kokkos_FOUND)
         message(WARNING "
             Could not find Kokkos!
             We can still install kokkos-cobyla,
