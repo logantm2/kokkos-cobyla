@@ -54,9 +54,9 @@ TEST(unit_tests, SimpleQuadratic) {
 
     int n=2;
     int m=0;
-    Kokkos::View<double*> x("SimpleQuadratic::x", 10);
-    Kokkos::View<double*> w("SimpleQuadratic::w", 3000);
-    Kokkos::View<int*> iact("SimpleQuadratic::iact", 51);
+    Kokkos::View<double*> x("SimpleQuadratic::x", n);
+    Kokkos::View<double*> w("SimpleQuadratic::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("SimpleQuadratic::iact", requiredIntegralWorkViewSize(m));
 
     Kokkos::deep_copy(x, 1.0);
 

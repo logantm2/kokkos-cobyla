@@ -1305,6 +1305,21 @@ void cobyla(
     );
 }
 
+template<typename IntegralType>
+IntegralType requiredScalarWorkViewSize(
+    IntegralType n,
+    IntegralType m
+) {
+    return n*(3*n + 2*m + 11) + 4*m + 6;
+}
+
+template<typename IntegralType>
+IntegralType requiredIntegralWorkViewSize(
+    IntegralType m
+) {
+    return m+1;
+}
+
 } // namespace kokkos_cobyla
 
 #endif // KOKKOS_COBYLA_HPP
