@@ -60,18 +60,27 @@ TEST(unit_tests, SimpleQuadratic) {
 
     Kokkos::deep_copy(x, 1.0);
 
-    cobyla(
-        n,
-        m,
-        x,
-        rhobeg,
-        rhoend,
-        maxfun,
-        w,
-        iact,
-        SimpleQuadratic
-    );
+    Kokkos::parallel_for(
+        "SimpleQuadratic::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            SimpleQuadratic
+        );
+    });
 
-    EXPECT_DOUBLE_EQ(-1.0, x(0));
-    EXPECT_DOUBLE_EQ( 0.0, x(1));
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    EXPECT_DOUBLE_EQ(-1.0, h_x(0));
+    EXPECT_DOUBLE_EQ( 0.0, h_x(1));
 }
