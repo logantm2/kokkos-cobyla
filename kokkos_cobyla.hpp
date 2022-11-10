@@ -99,8 +99,8 @@ void trstlp(
     // LTM Wrap unmanaged Views around the flattened Views
     // so that we can do 2D indexing.
     Kokkos::View<
-        ScalarWorkViewType::value_type**,
-        ScalarWorkViewType::memory_space,
+        typename ScalarWorkViewType::value_type**,
+        typename ScalarWorkViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
     >
     a(a_flat.data(), n, m+1),
