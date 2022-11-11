@@ -19,7 +19,11 @@ for more details.
 #ifndef KOKKOS_COBYLA_HPP
 #define KOKKOS_COBYLA_HPP
 
-#define KOKKOS_COBYLA_PRINT
+#if __cplusplus == 199711L || __cplusplus == 201103L || __cplusplus == 201402L
+#define KOKKOS_COBYLA_CONSTEXPR_IF if
+#else
+#define KOKKOS_COBYLA_CONSTEXPR_IF if constexpr
+#endif
 
 #include <Kokkos_Core.hpp>
 
@@ -593,17 +597,9 @@ template <
     typename IntegralType,
     typename SolutionViewType,
     typename ScalarType,
-    typename conViewType,
-    typename simViewType,
-    typename simiViewType,
-    typename datmatViewType,
-    typename aViewType,
-    typename vsigViewType,
-    typename vetaViewType,
-    typename sigbarViewType,
-    typename dxViewType,
-    typename wViewType,
-    typename IntegralWorkViewType
+    typename ScalarSubViewType,
+    typename IntegralWorkViewType,
+    int iprint
 >
 KOKKOS_INLINE_FUNCTION
 void cobylb(
@@ -613,49 +609,46 @@ void cobylb(
     SolutionViewType x,
     ScalarType rhobeg,
     ScalarType rhoend,
-#ifdef KOKKOS_COBYLA_PRINT
-    IntegralType iprint,
-#endif
     IntegralType maxfun,
-    conViewType con,
-    simViewType sim_flat,
-    simiViewType simi_flat,
-    datmatViewType datmat_flat,
-    aViewType a_flat,
-    vsigViewType vsig,
-    vetaViewType veta,
-    sigbarViewType sigbar,
-    dxViewType dx,
-    wViewType w,
+    ScalarSubViewType con,
+    ScalarSubViewType sim_flat,
+    ScalarSubViewType simi_flat,
+    ScalarSubViewType datmat_flat,
+    ScalarSubViewType a_flat,
+    ScalarSubViewType vsig,
+    ScalarSubViewType veta,
+    ScalarSubViewType sigbar,
+    ScalarSubViewType dx,
+    ScalarSubViewType w,
     IntegralWorkViewType iact,
     void (*calcfc) (
         IntegralType n_in,
         IntegralType m_in,
         SolutionViewType x_in,
         ScalarType &f_in,
-        conViewType con_in
+        ScalarSubViewType con_in
     )
 ) {
     // Wrap unmanaged Views around the flattened Views
     // so that we can do 2D indexing.
     Kokkos::View<
-        typename simViewType::value_type**,
-        typename simViewType::memory_space,
+        typename ScalarSubViewType::value_type**,
+        typename ScalarSubViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
     > sim(sim_flat.data(), n, n+1);
     Kokkos::View<
-        typename simiViewType::value_type**,
-        typename simiViewType::memory_space,
+        typename ScalarSubViewType::value_type**,
+        typename ScalarSubViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
     > simi(simi_flat.data(), n, n);
     Kokkos::View<
-        typename datmatViewType::value_type**,
-        typename datmatViewType::memory_space,
+        typename ScalarSubViewType::value_type**,
+        typename ScalarSubViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
     > datmat(datmat_flat.data(), mpp, n+1);
     Kokkos::View<
-        typename aViewType::value_type**,
-        typename aViewType::memory_space,
+        typename ScalarSubViewType::value_type**,
+        typename ScalarSubViewType::memory_space,
         Kokkos::MemoryTraits<Kokkos::Unmanaged>
     > a(a_flat.data(), n, m+1);
 
@@ -724,8 +717,7 @@ void cobylb(
     ScalarType delta = 1.1;
     ScalarType rho = rhobeg;
     ScalarType parmu = 0.0;
-#ifdef KOKKOS_COBYLA_PRINT
-    if (iprint >= 2) {
+    KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 2) {
         printf(
             "\n   The initial value of RHO is%13.6e  and PARMU is set to zero.",
             rho
@@ -733,7 +725,6 @@ void cobylb(
     }
     IntegralType iptem = n < 5 ? n : 5;
     IntegralType iptemp = iptem+1;
-#endif
 
     IntegralType nfvals = 0;
     ScalarType temp = 1.0/rho;
@@ -753,11 +744,9 @@ void cobylb(
     // the algorithm.
 line_40:
     if (nfvals >= maxfun and nfvals > 0) {
-#ifdef KOKKOS_COBYLA_PRINT
-        if (iprint >= 1) {
+        KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 1) {
             printf("\n   Return from subroutine COBYLA because the MAXFUN limit has been reached.");
         }
-#endif
         goto line_600;
     }
     nfvals = nfvals + 1;
@@ -768,8 +757,7 @@ line_40:
             resmax = math::fmax(resmax, -con(m1(k)));
         }
     }
-#ifdef KOKKOS_COBYLA_PRINT
-    if (nfvals == iprint-1 or iprint == 3) {
+    KOKKOS_COBYLA_CONSTEXPR_IF ((nfvals == iprint-1 and iprint >=1) or iprint == 3) {
         printf(
             "\n   NFVALS =%5d   F =%13.6e    MAXCV =%13.6e\n   X =",
             nfvals,
@@ -786,7 +774,6 @@ line_40:
             }
         }
     }
-#endif
     con(m1(mp)) = f;
     con(m1(mpp)) = resmax;
     if (ibrnch == 1) {
@@ -890,11 +877,9 @@ line_140:
         }
     }
     if (error > 0.1) {
-#ifdef KOKKOS_COBYLA_PRINT
-        if (iprint >= 1) printf(
+        KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 1) printf(
             "\n   Return from subroutine COBYLA because rounding errors are becoming damaging."
         );
-#endif
         goto line_600;
     }
 
@@ -1068,12 +1053,10 @@ line_370:
     }
     if (parmu < 1.5 * barmu) {
         parmu = 2.0*barmu;
-#ifdef KOKKOS_COBYLA_PRINT
-        if (iprint >= 2) printf(
+        KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 2) printf(
             "\n   Increase in PARMU to%13.6e",
             parmu
         );
-#endif
         phi = datmat(m1(mp),m1(np)) + parmu*datmat(m1(mpp),m1(np));
         for (j=1; j<=n; j++) {
             temp = datmat(m1(mp),m1(j)) + parmu*datmat(m1(mpp),m1(j));
@@ -1219,13 +1202,12 @@ line_550:
                 parmu = (cmax-cmin)/denom;
             }
         }
-#ifdef KOKKOS_COBYLA_PRINT
-        if (iprint >= 2) printf(
+        KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 2) printf(
             "\n   Reduction in RHO to%13.6e  and PARMU =%13.6e",
             rho,
             parmu
         );
-        if (iprint == 2) {
+        KOKKOS_COBYLA_CONSTEXPR_IF (iprint == 2) {
             printf(
                 "\n   NFVALS =%5d   F =%13.6e    MAXCV =%13.6e\n   X =",
                 nfvals,
@@ -1242,16 +1224,13 @@ line_550:
                 }
             }
         }
-#endif
         goto line_140;
     }
 
     // Return the best calculated values of the variables.
-#ifdef KOKKOS_COBYLA_PRINT
-    if (iprint >= 1) printf(
+    KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 1) printf(
         "\n   Normal return from subroutine COBYLA"
     );
-#endif
     if (ifull == 1) goto line_620;
 line_600:
     for (i=1; i<=n; i++) {
@@ -1260,8 +1239,7 @@ line_600:
     f = datmat(m1(mp),m1(np));
     resmax = datmat(m1(mpp),m1(np));
 line_620:
-#ifdef KOKKOS_COBYLA_PRINT
-    if (iprint >= 1) {
+    KOKKOS_COBYLA_CONSTEXPR_IF (iprint >= 1) {
         printf(
             "\n   NFVALS =%5d   F =%13.6e    MAXCV =%13.6e\n   X =",
             nfvals,
@@ -1278,7 +1256,6 @@ line_620:
             }
         }
     }
-#endif
     maxfun = nfvals;
     return;
 }
@@ -1345,7 +1322,8 @@ template <
     typename SolutionViewType,
     typename ScalarType,
     typename ScalarWorkViewType,
-    typename IntegralWorkViewType
+    typename IntegralWorkViewType,
+    int iprint = 0
 >
 KOKKOS_INLINE_FUNCTION
 void cobyla(
@@ -1354,9 +1332,6 @@ void cobyla(
     SolutionViewType x,
     ScalarType rhobeg,
     ScalarType rhoend,
-#ifdef KOKKOS_COBYLA_PRINT
-    IntegralType iprint,
-#endif
     IntegralType maxfun,
     ScalarWorkViewType w,
     IntegralWorkViewType iact,
@@ -1380,16 +1355,20 @@ void cobyla(
     IntegralType iwork = idx + n;
     IntegralType total_size = n*(3*n + 2*m + 11) + 4*m + 6;
 
-    cobylb(
+    cobylb<
+        IntegralType,
+        SolutionViewType,
+        ScalarType,
+        decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1))),
+        IntegralWorkViewType,
+        iprint
+    > (
         n,
         m,
         mpp,
         x,
         rhobeg,
         rhoend,
-#ifdef KOKKOS_COBYLA_PRINT
-        iprint,
-#endif
         maxfun,
         Kokkos::subview(w, Kokkos::make_pair(0, isim)),
         Kokkos::subview(w, Kokkos::make_pair(isim, isimi)),

@@ -125,7 +125,6 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
             x,
             rhobeg,
             rhoend,
-            3,
             maxfun,
             w,
             iact,
