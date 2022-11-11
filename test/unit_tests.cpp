@@ -242,3 +242,55 @@ TEST(unit_tests, WeakRosenbrock) {
 
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
+
+KOKKOS_INLINE_FUNCTION
+void IntermediateRosenbrock(
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1)))
+) {
+    f = 10.0 * math::pow(math::pow(x(0), 2.0) - x(1), 2.0) + math::pow(1.0 + x(0), 2.0);
+}
+
+TEST(unit_tests, IntermediateRosenbrock) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=2;
+    int m=0;
+    Kokkos::View<double*> x("IntermediateRosenbrock::x", n);
+    Kokkos::View<double*> w("IntermediateRosenbrock::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("IntermediateRosenbrock::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "IntermediateRosenbrock::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            IntermediateRosenbrock
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) + 1.0, 2.0);
+    l2_error += std::pow(h_x(1) - 1.0, 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
+}
