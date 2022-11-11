@@ -19,6 +19,8 @@ for more details.
 #ifndef KOKKOS_COBYLA_HPP
 #define KOKKOS_COBYLA_HPP
 
+#define KOKKOS_COBYLA_PRINT
+
 #include <Kokkos_Core.hpp>
 
 namespace kokkos_cobyla {
@@ -611,7 +613,9 @@ void cobylb(
     SolutionViewType x,
     ScalarType rhobeg,
     ScalarType rhoend,
-    // IntegralType iprint,
+#ifdef KOKKOS_COBYLA_PRINT
+    IntegralType iprint,
+#endif
     IntegralType maxfun,
     conViewType con,
     simViewType sim_flat,
@@ -720,6 +724,16 @@ void cobylb(
     ScalarType delta = 1.1;
     ScalarType rho = rhobeg;
     ScalarType parmu = 0.0;
+#ifdef KOKKOS_COBYLA_PRINT
+    if (iprint >= 2) {
+        printf(
+            "\n   The initial value of RHO is%13.6e  and PARMU is set to zero.",
+            rho
+        );
+    }
+    IntegralType iptem = n < 5 ? n : 5;
+    IntegralType iptemp = iptem+1;
+#endif
 
     IntegralType nfvals = 0;
     ScalarType temp = 1.0/rho;
@@ -739,6 +753,11 @@ void cobylb(
     // the algorithm.
 line_40:
     if (nfvals >= maxfun and nfvals > 0) {
+#ifdef KOKKOS_COBYLA_PRINT
+        if (iprint >= 1) {
+            printf("\n   Return from subroutine COBYLA because the MAXFUN limit has been reached.");
+        }
+#endif
         goto line_600;
     }
     nfvals = nfvals + 1;
@@ -749,6 +768,25 @@ line_40:
             resmax = math::fmax(resmax, -con(m1(k)));
         }
     }
+#ifdef KOKKOS_COBYLA_PRINT
+    if (nfvals == iprint-1 or iprint == 3) {
+        printf(
+            "\n   NFVALS =%5d   F =%13.6e    MAXCV =%13.6e\n   X =",
+            nfvals,
+            f,
+            resmax
+        );
+        for (i=1; i<=iptem; i++) {
+            printf("%13.6e  ", x(m1(i)));
+        }
+        if (iptem < n) {
+            printf("\n      ");
+            for (i=iptemp; i<=n; i++) {
+                printf("%13.6e  ", x(m1(i)));
+            }
+        }
+    }
+#endif
     con(m1(mp)) = f;
     con(m1(mpp)) = resmax;
     if (ibrnch == 1) {
@@ -852,6 +890,11 @@ line_140:
         }
     }
     if (error > 0.1) {
+#ifdef KOKKOS_COBYLA_PRINT
+        if (iprint >= 1) printf(
+            "\n   Return from subroutine COBYLA because rounding errors are becoming damaging."
+        );
+#endif
         goto line_600;
     }
 
@@ -1025,6 +1068,12 @@ line_370:
     }
     if (parmu < 1.5 * barmu) {
         parmu = 2.0*barmu;
+#ifdef KOKKOS_COBYLA_PRINT
+        if (iprint >= 2) printf(
+            "\n   Increase in PARMU to%13.6e",
+            parmu
+        );
+#endif
         phi = datmat(m1(mp),m1(np)) + parmu*datmat(m1(mpp),m1(np));
         for (j=1; j<=n; j++) {
             temp = datmat(m1(mp),m1(j)) + parmu*datmat(m1(mpp),m1(j));
@@ -1170,10 +1219,39 @@ line_550:
                 parmu = (cmax-cmin)/denom;
             }
         }
+#ifdef KOKKOS_COBYLA_PRINT
+        if (iprint >= 2) printf(
+            "\n   Reduction in RHO to%13.6e  and PARMU =%13.6e",
+            rho,
+            parmu
+        );
+        if (iprint == 2) {
+            printf(
+                "\n   NFVALS =%5d   F =%13.6e    MAXCV =%13.6e\n   X =",
+                nfvals,
+                datmat(m1(mp), m1(np)),
+                datmat(m1(mpp), m1(np))
+            );
+            for (i=1; i<=iptem; i++) {
+                printf("%13.6e  ", sim(m1(i), m1(np)));
+            }
+            if (iptem < n) {
+                printf("\n      ");
+                for (i=iptemp; i<=n; i++) {
+                    printf("%13.6e  ", x(m1(i)));
+                }
+            }
+        }
+#endif
         goto line_140;
     }
 
     // Return the best calculated values of the variables.
+#ifdef KOKKOS_COBYLA_PRINT
+    if (iprint >= 1) printf(
+        "\n   Normal return from subroutine COBYLA"
+    );
+#endif
     if (ifull == 1) goto line_620;
 line_600:
     for (i=1; i<=n; i++) {
@@ -1182,6 +1260,25 @@ line_600:
     f = datmat(m1(mp),m1(np));
     resmax = datmat(m1(mpp),m1(np));
 line_620:
+#ifdef KOKKOS_COBYLA_PRINT
+    if (iprint >= 1) {
+        printf(
+            "\n   NFVALS =%5d   F =%13.6e    MAXCV =%13.6e\n   X =",
+            nfvals,
+            f,
+            resmax
+        );
+        for (i=1; i<=iptem; i++) {
+            printf("%13.6e  ", x(m1(i)));
+        }
+        if (iptem < n) {
+            printf("\n      ");
+            for (i=iptemp; i<=n; i++) {
+                printf("%13.6e  ", x(m1(i)));
+            }
+        }
+    }
+#endif
     maxfun = nfvals;
     return;
 }
@@ -1257,7 +1354,9 @@ void cobyla(
     SolutionViewType x,
     ScalarType rhobeg,
     ScalarType rhoend,
-    // iprint,
+#ifdef KOKKOS_COBYLA_PRINT
+    IntegralType iprint,
+#endif
     IntegralType maxfun,
     ScalarWorkViewType w,
     IntegralWorkViewType iact,
@@ -1288,7 +1387,9 @@ void cobyla(
         x,
         rhobeg,
         rhoend,
-        // iprint,
+#ifdef KOKKOS_COBYLA_PRINT
+        iprint,
+#endif
         maxfun,
         Kokkos::subview(w, Kokkos::make_pair(0, isim)),
         Kokkos::subview(w, Kokkos::make_pair(isim, isimi)),
