@@ -869,8 +869,8 @@ line_140:
             for (k=1; k<=n; k++) {
                 sim(m1(i), m1(k)) = sim(m1(i), m1(k)) - temp;
                 tempa = tempa - simi(m1(k), m1(i));
-                simi(m1(nbest), m1(i)) = tempa;
             }
+            simi(m1(nbest), m1(i)) = tempa;
         }
     }
 
