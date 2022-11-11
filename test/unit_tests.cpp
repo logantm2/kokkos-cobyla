@@ -29,7 +29,7 @@ namespace math =
 #endif
 
 static constexpr double rhobeg = 0.5;
-static constexpr double rhoend = 0.001;
+static constexpr double rhoend = 0.0001;
 static constexpr int maxfun = 2000;
 
 template<
@@ -81,8 +81,13 @@ TEST(unit_tests, SimpleQuadratic) {
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
 
-    EXPECT_DOUBLE_EQ(-1.0, h_x(0));
-    EXPECT_DOUBLE_EQ( 0.0, h_x(1));
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) - (-1.0), 2.0);
+    l2_error += std::pow(h_x(1) -   0.0 , 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
 template<
@@ -135,6 +140,11 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
 
-    EXPECT_DOUBLE_EQ(-1.0, h_x(0));
-    EXPECT_DOUBLE_EQ( 0.0, h_x(1));
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) - std::sqrt(0.5), 2.0);
+    l2_error += std::pow(h_x(1) + std::sqrt(0.5), 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
