@@ -762,7 +762,7 @@ line_40:
     }
     nfvals = nfvals + 1;
     (*calcfc)(n, m, x, f, con);
-     resmax = 0.0;
+    resmax = 0.0;
     if (m > 0) {
         for (k=1; k<=m; k++) {
             resmax = math::fmax(resmax, -con(m1(k)));
