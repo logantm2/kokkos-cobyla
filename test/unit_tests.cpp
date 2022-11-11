@@ -32,19 +32,13 @@ static constexpr double rhobeg = 0.5;
 static constexpr double rhoend = 0.0001;
 static constexpr int maxfun = 2000;
 
-template<
-    typename IntegralType,
-    typename SolutionViewType,
-    typename ScalarType,
-    typename ScalarWorkViewType
->
 KOKKOS_INLINE_FUNCTION
 void SimpleQuadratic(
-    IntegralType,
-    IntegralType,
-    SolutionViewType x,
-    ScalarType &f,
-    ScalarWorkViewType
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1)))
 ) {
     f = 10.0 * math::pow(x(0) + 1.0, 2.0) + math::pow(x(1), 2.0);
 }
@@ -74,7 +68,7 @@ TEST(unit_tests, SimpleQuadratic) {
             maxfun,
             w,
             iact,
-            SimpleQuadratic<int, Kokkos::View<double*>, double, decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1)))>
+            SimpleQuadratic
         );
     });
 
@@ -90,19 +84,13 @@ TEST(unit_tests, SimpleQuadratic) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
-template<
-    typename IntegralType,
-    typename SolutionViewType,
-    typename ScalarType,
-    typename ScalarWorkViewType
->
 KOKKOS_INLINE_FUNCTION
 void TwoDUnitCircleCalculation(
-    IntegralType,
-    IntegralType,
-    SolutionViewType x,
-    ScalarType &f,
-    ScalarWorkViewType con
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1))) con
 ) {
     f = x(0) * x(1);
     con(0) = 1.0 - math::pow(x(0), 2.0) - math::pow(x(1), 2.0);
@@ -133,7 +121,7 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
             maxfun,
             w,
             iact,
-            &TwoDUnitCircleCalculation<int, Kokkos::View<double*>, double, decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1)))>
+            &TwoDUnitCircleCalculation
         );
     });
 
@@ -143,6 +131,60 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
     double l2_error = 0.0;
     l2_error += std::pow(h_x(0) - std::sqrt(0.5), 2.0);
     l2_error += std::pow(h_x(1) + std::sqrt(0.5), 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
+}
+
+KOKKOS_INLINE_FUNCTION
+void ThreeDEllipsoidCalculation(
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1))) con
+) {
+    f = x(0) * x(1) * x(2);
+    con(0) = 1.0 - math::pow(x(0), 2.0) - 2.0*math::pow(x(1), 2.0) - 3.0*math::pow(x(2), 2.0);
+}
+
+TEST(unit_tests, ThreeDEllipsoidCalculation) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=3;
+    int m=1;
+    Kokkos::View<double*> x("ThreeDEllipsoidCalculation::x", n);
+    Kokkos::View<double*> w("ThreeDEllipsoidCalculation::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("ThreeDEllipsoidCalculation::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "ThreeDEllipsoidCalculation::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            &ThreeDEllipsoidCalculation
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) - std::sqrt(1.0/3.0), 2.0);
+    l2_error += std::pow(h_x(1) - std::sqrt(1.0/6.0), 2.0);
+    l2_error += std::pow(h_x(2) +           1.0/3.0 , 2.0);
 
     const double abs_tol = 1.e-2;
 
