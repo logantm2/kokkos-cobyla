@@ -74,7 +74,7 @@ TEST(unit_tests, SimpleQuadratic) {
             maxfun,
             w,
             iact,
-            SimpleQuadratic
+            SimpleQuadratic<int, Kokkos::View<double*>, double, decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1)))>
         );
     });
 
@@ -128,7 +128,7 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
             maxfun,
             w,
             iact,
-            TwoDUnitCircleCalculation
+            &TwoDUnitCircleCalculation<int, Kokkos::View<double*>, double, decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1)))>
         );
     });
 

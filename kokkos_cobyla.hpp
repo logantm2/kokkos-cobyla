@@ -599,6 +599,7 @@ template <
     typename ScalarType,
     typename ScalarSubViewType,
     typename IntegralWorkViewType,
+    typename FunctorType,
     int iprint
 >
 KOKKOS_INLINE_FUNCTION
@@ -621,13 +622,7 @@ void cobylb(
     ScalarSubViewType dx,
     ScalarSubViewType w,
     IntegralWorkViewType iact,
-    void (*calcfc) (
-        IntegralType n_in,
-        IntegralType m_in,
-        SolutionViewType x_in,
-        ScalarType &f_in,
-        ScalarSubViewType con_in
-    )
+    FunctorType calcfc
 ) {
     // Wrap unmanaged Views around the flattened Views
     // so that we can do 2D indexing.
@@ -750,7 +745,7 @@ line_40:
         goto line_600;
     }
     nfvals = nfvals + 1;
-    (*calcfc)(n, m, x, f, con);
+    calcfc(n, m, x, f, con);
     resmax = 0.0;
     if (m > 0) {
         for (k=1; k<=m; k++) {
@@ -1323,6 +1318,7 @@ template <
     typename ScalarType,
     typename ScalarWorkViewType,
     typename IntegralWorkViewType,
+    typename FunctorType,
     int iprint = 0
 >
 KOKKOS_INLINE_FUNCTION
@@ -1335,13 +1331,7 @@ void cobyla(
     IntegralType maxfun,
     ScalarWorkViewType w,
     IntegralWorkViewType iact,
-    void (*calcfc) (
-        IntegralType n_in,
-        IntegralType m_in,
-        SolutionViewType x_in,
-        ScalarType &f_in,
-        decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1))) con_in
-    )
+    FunctorType calcfc
 ) {
     IntegralType mpp = m+2;
     IntegralType isim = mpp;
@@ -1361,6 +1351,7 @@ void cobyla(
         ScalarType,
         decltype(Kokkos::subview(w, Kokkos::make_pair(0, 1))),
         IntegralWorkViewType,
+        FunctorType,
         iprint
     > (
         n,
