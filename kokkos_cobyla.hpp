@@ -530,7 +530,7 @@ line_390:
     }
     if (mcon > nact) {
         kl = nact + 1;
-        for (k=kl; k<=mcon; kl++) {
+        for (k=kl; k<=mcon; k++) {
             kk = iact(m1(k));
             sum = resmax-b(m1(kk));
             sumabs = resmax + math::fabs(b(m1(kk)));
