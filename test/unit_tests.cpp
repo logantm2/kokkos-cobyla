@@ -84,3 +84,58 @@ TEST(unit_tests, SimpleQuadratic) {
     EXPECT_DOUBLE_EQ(-1.0, h_x(0));
     EXPECT_DOUBLE_EQ( 0.0, h_x(1));
 }
+
+template<
+    typename IntegralType,
+    typename SolutionViewType,
+    typename ScalarType,
+    typename ScalarWorkViewType
+>
+KOKKOS_INLINE_FUNCTION
+void TwoDUnitCircleCalculation(
+    IntegralType,
+    IntegralType,
+    SolutionViewType x,
+    ScalarType &f,
+    ScalarWorkViewType con
+) {
+    f = x(0) * x(1);
+    con(0) = 1.0 - math::pow(x(0), 2.0) - math::pow(x(1), 2.0);
+}
+
+TEST(unit_tests, TwoDUnitCircleCalculation) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=2;
+    int m=1;
+    Kokkos::View<double*> x("TwoDUnitCircleCalculation::x", n);
+    Kokkos::View<double*> w("TwoDUnitCircleCalculation::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("TwoDUnitCircleCalculation::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "TwoDUnitCircleCalculation::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            3,
+            maxfun,
+            w,
+            iact,
+            TwoDUnitCircleCalculation
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    EXPECT_DOUBLE_EQ(-1.0, h_x(0));
+    EXPECT_DOUBLE_EQ( 0.0, h_x(1));
+}
