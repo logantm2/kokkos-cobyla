@@ -294,3 +294,57 @@ TEST(unit_tests, IntermediateRosenbrock) {
 
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
+
+KOKKOS_INLINE_FUNCTION
+void Fletcher9(
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1))) con
+) {
+    f = - x(0) - x(1);
+    con(0) = x(1) - math::pow(x(0), 2.0);
+    con(1) = 1.0 - math::pow(x(0), 2.0) - math::pow(x(1), 2.0);
+}
+
+TEST(unit_tests, Fletcher9) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=2;
+    int m=2;
+    Kokkos::View<double*> x("Fletcher9::x", n);
+    Kokkos::View<double*> w("Fletcher9::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("Fletcher9::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "Fletcher9::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            Fletcher9
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) - std::sqrt(0.5), 2.0);
+    l2_error += std::pow(h_x(1) - std::sqrt(0.5), 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
+}
