@@ -470,3 +470,92 @@ TEST(unit_tests, RosenSuzuki) {
 
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
+
+KOKKOS_INLINE_FUNCTION
+void HockSchittkowski100(
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1))) con
+) {
+    f =
+        math::pow(x(0) - 10.0, 2.0) +
+        5.0 * math::pow(x(1) - 12.0, 2.0) +
+        math::pow(x(2), 4.0) +
+        3.0 * math::pow(x(3) - 11.0, 2.0) +
+        10.0 * math::pow(x(4), 6.0) +
+        7.0 * math::pow(x(5), 2.0) +
+        math::pow(x(6), 4.0) -
+        4.0 * x(5) * x(6) - 10.0 * x(5) - 8.0 * x(6);
+    con(0) = 127.0 -
+        2.0 * math::pow(x(0), 2.0) -
+        3.0 * math::pow(x(1), 4.0) -
+        x(2) -
+        4.0 * math::pow(x(3), 2.0) -
+        5.0 * x(4);
+    con(1) = 282.0 -
+        7.0 * x(0) -
+        3.0 * x(1) -
+        10.0 * math::pow(x(2), 2.0) -
+        x(3) +
+        x(4);
+    con(2) = 196.0 -
+        23.0 * x(0) -
+        math::pow(x(1), 2.0) -
+        6.0 * math::pow(x(5), 2.0) +
+        8.0 * x(6);
+    con(3) =
+        -4.0 * math::pow(x(0), 2.0) -
+        math::pow(x(1), 2.0) +
+        3.0 * x(0) * x(1) -
+        2.0 * math::pow(x(2), 2.0) -
+        5.0 * x(5) +
+        11.0 * x(6);
+}
+
+TEST(unit_tests, HockSchittkowski100) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=7;
+    int m=4;
+    Kokkos::View<double*> x("HockSchittkowski100::x", n);
+    Kokkos::View<double*> w("HockSchittkowski100::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("HockSchittkowski100::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "HockSchittkowski100::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            HockSchittkowski100
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) - 2.330499 , 2.0);
+    l2_error += std::pow(h_x(1) - 1.951372 , 2.0);
+    l2_error += std::pow(h_x(2) + 0.4775414, 2.0);
+    l2_error += std::pow(h_x(3) - 4.365726 , 2.0);
+    l2_error += std::pow(h_x(4) + 0.624487 , 2.0);
+    l2_error += std::pow(h_x(5) - 1.038131 , 2.0);
+    l2_error += std::pow(h_x(6) - 1.594227 , 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
+}
