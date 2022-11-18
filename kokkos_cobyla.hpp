@@ -1345,6 +1345,10 @@ void cobyla(
     IntegralType iwork = idx + n;
     IntegralType total_size = n*(3*n + 2*m + 11) + 4*m + 6;
 
+    KOKKOS_ASSERT(x.span_is_contiguous());
+    KOKKOS_ASSERT(w.span_is_contiguous());
+    KOKKOS_ASSERT(iact.span_is_contiguous());
+
     cobylb<
         IntegralType,
         SolutionViewType,
