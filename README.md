@@ -1,6 +1,16 @@
 # kokkos-cobyla
 Port of COBYLA algorithm to Kokkos
 
+The purpose of this library is to allow the use of the COBYLA algorithm
+*from inside Kokkos parallel kernels*.
+A common use case is that, in a FEM context,
+one may need to solve a small constrained optimization problem in each element.
+That problem is exactly what kokkos-cobyla was designed to solve.
+
+For better or worse, this is essentially a direct translation of the original
+F77 code to C++, with all the `goto`s and indexing from 1 that
+come with it.
+
 # Installation
 kokkos-cobyla is a header-only library.
 In fact, there's only one header.
