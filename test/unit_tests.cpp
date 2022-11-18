@@ -398,7 +398,73 @@ TEST(unit_tests, Fletcher14) {
     double l2_error = 0.0;
     l2_error += std::pow(h_x(0)      , 2.0);
     l2_error += std::pow(h_x(1) + 3.0, 2.0);
-    l2_error += std::pow(h_x(1) + 3.0, 2.0);
+    l2_error += std::pow(h_x(2) + 3.0, 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
+}
+
+KOKKOS_INLINE_FUNCTION
+void RosenSuzuki(
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1))) con
+) {
+    f =
+        math::pow(x(0), 2.0) +
+        math::pow(x(1), 2.0) +
+        2.0 * math::pow(x(2), 2.0) +
+        math::pow(x(3), 2.0) -
+        5.0 * x(0) - 5.0 * x(1) - 21.0 * x(2) + 7.0 * x(3);
+    con(0) = 8.0 - math::pow(x(0), 2.0) - math::pow(x(1), 2.0) -
+        math::pow(x(2), 2.0) - math::pow(x(3), 2.0) -
+        x(0) + x(1) - x(2) + x(3);
+    con(1) = 10.0 - math::pow(x(0), 2.0) - 2.0 * math::pow(x(1), 2.0)
+        - math::pow(x(2), 2.0) - 2.0 * math::pow(x(3), 2.0) + x(0) + x(3);
+    con(2) = 5.0 - 2.0 * math::pow(x(0), 2.0) - math::pow(x(1), 2.0) -
+        math::pow(x(2), 2.0) - 2.0 * x(0) + x(1) + x(3);
+}
+
+TEST(unit_tests, RosenSuzuki) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=4;
+    int m=3;
+    Kokkos::View<double*> x("RosenSuzuki::x", n);
+    Kokkos::View<double*> w("RosenSuzuki::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("RosenSuzuki::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "RosenSuzuki::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            RosenSuzuki
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0)      , 2.0);
+    l2_error += std::pow(h_x(1) - 1.0, 2.0);
+    l2_error += std::pow(h_x(2) - 2.0, 2.0);
+    l2_error += std::pow(h_x(3) + 1.0, 2.0);
 
     const double abs_tol = 1.e-2;
 
