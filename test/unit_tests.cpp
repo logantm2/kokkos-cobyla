@@ -559,3 +559,83 @@ TEST(unit_tests, HockSchittkowski100) {
 
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
+
+KOKKOS_INLINE_FUNCTION
+void HexagonArea(
+    int,
+    int,
+    Kokkos::View<double*> x,
+    double &f,
+    decltype(Kokkos::subview(x, Kokkos::make_pair(0, 1))) con
+) {
+    f = -0.5 * (
+        x(0) * x(3) - x(1) * x(2) + x(2) * x(8) - x(4) * x(8) + x(4) * x(7) - x(5) * x(6)
+    );
+    con(0) = 1.0 - math::pow(x(2), 2.0) - math::pow(x(3), 2.0);
+    con(1) = 1.0 - math::pow(x(8), 2.0);
+    con(2) = 1.0 - math::pow(x(4), 2.0) - math::pow(x(5), 2.0);
+    con(3) = 1.0 - math::pow(x(0), 2.0) - math::pow(x(1) - x(8), 2.0);
+    con(4) = 1.0 - math::pow(x(0) - x(4), 2.0) - math::pow(x(1) - x(5), 2.0);
+    con(5) = 1.0 - math::pow(x(0) - x(6), 2.0) - math::pow(x(1) - x(7), 2.0);
+    con(6) = 1.0 - math::pow(x(2) - x(4), 2.0) - math::pow(x(3) - x(5), 2.0);
+    con(7) = 1.0 - math::pow(x(2) - x(6), 2.0) - math::pow(x(3) - x(7), 2.0);
+    con(8) = 1.0 - math::pow(x(6), 2.0) - math::pow(x(7) - x(8), 2.0);
+    con(9) = x(0) * x(3) - x(1) * x(2);
+    con(10) = x(2) * x(8);
+    con(11) = - x(4) * x(8);
+    con(12) = x(4) * x(7) - x(5) * x(6);
+    con(13) = x(8);
+}
+
+TEST(unit_tests, HexagonArea) {
+    Kokkos::ScopeGuard kokkos;
+
+    int n=9;
+    int m=14;
+    Kokkos::View<double*> x("HexagonArea::x", n);
+    Kokkos::View<double*> w("HexagonArea::w", requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int*> iact("HexagonArea::iact", requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "HexagonArea::callCobyla",
+        1,
+        KOKKOS_LAMBDA (const char)
+    {
+        cobyla(
+            n,
+            m,
+            x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            w,
+            iact,
+            HexagonArea
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    double tempa = h_x(0) + h_x(2) + h_x(4) + h_x(6);
+    double tempb = h_x(1) + h_x(3) + h_x(5) + h_x(7);
+    double tempc = 0.5 / std::sqrt(tempa*tempa + tempb*tempb);
+    double tempd = tempc * std::sqrt(3.0);
+
+    double l2_error = 0.0;
+    l2_error += std::pow(h_x(0) - (tempd*tempa + tempc*tempb), 2.0);
+    l2_error += std::pow(h_x(1) - (tempd*tempb - tempc*tempa), 2.0);
+    l2_error += std::pow(h_x(2) - (tempd*tempa - tempc*tempb), 2.0);
+    l2_error += std::pow(h_x(3) - (tempd*tempb + tempc*tempa), 2.0);
+    l2_error += std::pow(h_x(4) - (tempd*tempa + tempc*tempb), 2.0);
+    l2_error += std::pow(h_x(5) - (tempd*tempb - tempc*tempa), 2.0);
+    l2_error += std::pow(h_x(6) - (tempd*tempa - tempc*tempb), 2.0);
+    l2_error += std::pow(h_x(7) - (tempd*tempb + tempc*tempa), 2.0);
+    l2_error += std::pow(h_x(8)                              , 2.0);
+
+    const double abs_tol = 1.e-2;
+
+    EXPECT_NEAR(0.0, l2_error, abs_tol);
+}
