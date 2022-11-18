@@ -32,6 +32,65 @@ static constexpr double rhobeg = 0.5;
 static constexpr double rhoend = 0.0001;
 static constexpr int maxfun = 2000;
 
+TEST(unit_tests, ParallelSimpleQuadratic) {
+    Kokkos::ScopeGuard kokkos;
+
+    // Number of repetitions
+    int num_reps = 100;
+
+    int n=2;
+    int m=0;
+    Kokkos::View<double**> x("ParallelSimpleQuadratic::x", num_reps, n);
+    Kokkos::View<double**> w("ParallelSimpleQuadratic::w", num_reps, requiredScalarWorkViewSize(n, m));
+    Kokkos::View<int**> iact("ParallelSimpleQuadratic::iact", num_reps, requiredIntegralWorkViewSize(m));
+
+    Kokkos::deep_copy(x, 1.0);
+
+    Kokkos::parallel_for(
+        "ParallelSimpleQuadratic::callCobyla",
+        num_reps,
+        KOKKOS_LAMBDA (const int rep)
+    {
+        // Get slices of Views specific to this rep.
+        auto rep_x = Kokkos::subview(x, rep, Kokkos::ALL);
+        auto rep_w = Kokkos::subview(w, rep, Kokkos::ALL);
+        auto rep_iact = Kokkos::subview(iact, rep, Kokkos::ALL);
+
+        cobyla(
+            n,
+            m,
+            rep_x,
+            rhobeg,
+            rhoend,
+            maxfun,
+            rep_w,
+            rep_iact,
+            [=] (
+                int,
+                int,
+                decltype(rep_x) x_in,
+                double &f,
+                decltype(Kokkos::subview(rep_w, Kokkos::make_pair(0, 1)))
+            ) {
+                f = 10.0 * math::pow(x_in(0) + 1.0, 2.0) + math::pow(x_in(1), 2.0);
+            }
+        );
+    });
+
+    auto h_x = Kokkos::create_mirror_view(x);
+    Kokkos::deep_copy(h_x, x);
+
+    for (int rep=0; rep<num_reps; rep++) {
+        double l2_error = 0.0;
+        l2_error += std::pow(h_x(rep, 0) - (-1.0), 2.0);
+        l2_error += std::pow(h_x(rep, 1) -   0.0 , 2.0);
+
+        const double abs_tol = 1.e-2;
+
+        EXPECT_NEAR(0.0, l2_error, abs_tol) << "Failed for rep " << rep;
+    }
+}
+
 // Minimization of a simple quadratic function of two variables.
 KOKKOS_INLINE_FUNCTION
 void SimpleQuadratic(
