@@ -32,17 +32,14 @@ static constexpr double rhobeg = 0.5;
 static constexpr double rhoend = 0.0001;
 static constexpr int maxfun = 2000;
 
-TEST(unit_tests, ParallelSimpleQuadratic) {
-    Kokkos::ScopeGuard kokkos;
-
-    // Number of repetitions
-    int num_reps = 100;
-
+Kokkos::View<double*> runParallelSimpleQuadratic(int num_reps) {
     int n=2;
     int m=0;
-    Kokkos::View<double**> x("ParallelSimpleQuadratic::x", num_reps, n);
-    Kokkos::View<double**> w("ParallelSimpleQuadratic::w", num_reps, requiredScalarWorkViewSize(n, m));
-    Kokkos::View<int**> iact("ParallelSimpleQuadratic::iact", num_reps, requiredIntegralWorkViewSize(m));
+    int scalar_work_view_size = requiredScalarWorkViewSize(n, m);
+    int integral_work_view_size = requiredIntegralWorkViewSize(m);
+    Kokkos::View<double*> x("ParallelSimpleQuadratic::x", num_reps*n);
+    Kokkos::View<double*> w("ParallelSimpleQuadratic::w", num_reps*scalar_work_view_size);
+    Kokkos::View<int*> iact("ParallelSimpleQuadratic::iact", num_reps*integral_work_view_size);
 
     Kokkos::deep_copy(x, 1.0);
 
@@ -52,9 +49,9 @@ TEST(unit_tests, ParallelSimpleQuadratic) {
         KOKKOS_LAMBDA (const int rep)
     {
         // Get slices of Views specific to this rep.
-        auto rep_x = Kokkos::subview(x, rep, Kokkos::ALL);
-        auto rep_w = Kokkos::subview(w, rep, Kokkos::ALL);
-        auto rep_iact = Kokkos::subview(iact, rep, Kokkos::ALL);
+        auto rep_x = Kokkos::subview(x, Kokkos::make_pair(rep*n, (rep+1)*n));
+        auto rep_w = Kokkos::subview(w, Kokkos::make_pair(rep*scalar_work_view_size, (rep+1)*scalar_work_view_size));
+        auto rep_iact = Kokkos::subview(iact, Kokkos::make_pair(rep*integral_work_view_size, (rep+1)*integral_work_view_size));
 
         cobyla(
             n,
@@ -76,14 +73,26 @@ TEST(unit_tests, ParallelSimpleQuadratic) {
             }
         );
     });
+    Kokkos::fence();
+
+    return x;
+}
+
+TEST(unit_tests, ParallelSimpleQuadratic) {
+    Kokkos::ScopeGuard kokkos;
+
+    // Number of repetitions
+    int num_reps = 100;
+
+    Kokkos::View<double*> x = runParallelSimpleQuadratic(num_reps);
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
 
     for (int rep=0; rep<num_reps; rep++) {
         double l2_error = 0.0;
-        l2_error += std::pow(h_x(rep, 0) - (-1.0), 2.0);
-        l2_error += std::pow(h_x(rep, 1) -   0.0 , 2.0);
+        l2_error += std::pow(h_x(2*rep  ) - (-1.0), 2.0);
+        l2_error += std::pow(h_x(2*rep+1) -   0.0 , 2.0);
 
         const double abs_tol = 1.e-2;
 
@@ -103,9 +112,7 @@ void SimpleQuadratic(
     f = 10.0 * math::pow(x(0) + 1.0, 2.0) + math::pow(x(1), 2.0);
 }
 
-TEST(unit_tests, SimpleQuadratic) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runSimpleQuadratic() {
     int n=2;
     int m=0;
     Kokkos::View<double*> x("SimpleQuadratic::x", n);
@@ -132,6 +139,14 @@ TEST(unit_tests, SimpleQuadratic) {
         );
     });
 
+    return x;
+}
+
+TEST(unit_tests, SimpleQuadratic) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runSimpleQuadratic();
+
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
 
@@ -157,9 +172,7 @@ void TwoDUnitCircleCalculation(
     con(0) = 1.0 - math::pow(x(0), 2.0) - math::pow(x(1), 2.0);
 }
 
-TEST(unit_tests, TwoDUnitCircleCalculation) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runTwoDUnitCircleCalculation() {
     int n=2;
     int m=1;
     Kokkos::View<double*> x("TwoDUnitCircleCalculation::x", n);
@@ -182,9 +195,17 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
             maxfun,
             w,
             iact,
-            &TwoDUnitCircleCalculation
+            TwoDUnitCircleCalculation
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, TwoDUnitCircleCalculation) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runTwoDUnitCircleCalculation();
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
@@ -211,9 +232,7 @@ void ThreeDEllipsoidCalculation(
     con(0) = 1.0 - math::pow(x(0), 2.0) - 2.0*math::pow(x(1), 2.0) - 3.0*math::pow(x(2), 2.0);
 }
 
-TEST(unit_tests, ThreeDEllipsoidCalculation) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runThreeDEllipsoidCalculation() {
     int n=3;
     int m=1;
     Kokkos::View<double*> x("ThreeDEllipsoidCalculation::x", n);
@@ -240,6 +259,15 @@ TEST(unit_tests, ThreeDEllipsoidCalculation) {
         );
     });
 
+    return x;
+}
+
+TEST(unit_tests, ThreeDEllipsoidCalculation) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runThreeDEllipsoidCalculation();
+
+
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
 
@@ -265,9 +293,7 @@ void WeakRosenbrock(
     f = math::pow(math::pow(x(0), 2.0) - x(1), 2.0) + math::pow(1.0 + x(0), 2.0);
 }
 
-TEST(unit_tests, WeakRosenbrock) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runWeakRosenbrock() {
     int n=2;
     int m=0;
     Kokkos::View<double*> x("WeakRosenbrock::x", n);
@@ -294,6 +320,15 @@ TEST(unit_tests, WeakRosenbrock) {
         );
     });
 
+    return x;
+}
+
+TEST(unit_tests, WeakRosenbrock) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runWeakRosenbrock();
+
+
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
 
@@ -318,9 +353,7 @@ void IntermediateRosenbrock(
     f = 10.0 * math::pow(math::pow(x(0), 2.0) - x(1), 2.0) + math::pow(1.0 + x(0), 2.0);
 }
 
-TEST(unit_tests, IntermediateRosenbrock) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runIntermediateRosenbrock() {
     int n=2;
     int m=0;
     Kokkos::View<double*> x("IntermediateRosenbrock::x", n);
@@ -346,6 +379,15 @@ TEST(unit_tests, IntermediateRosenbrock) {
             IntermediateRosenbrock
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, IntermediateRosenbrock) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runIntermediateRosenbrock();
+
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
@@ -374,9 +416,7 @@ void Fletcher9(
     con(1) = 1.0 - math::pow(x(0), 2.0) - math::pow(x(1), 2.0);
 }
 
-TEST(unit_tests, Fletcher9) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runFletcher9() {
     int n=2;
     int m=2;
     Kokkos::View<double*> x("Fletcher9::x", n);
@@ -402,6 +442,15 @@ TEST(unit_tests, Fletcher9) {
             Fletcher9
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, Fletcher9) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runFletcher9();
+
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
@@ -431,9 +480,7 @@ void Fletcher14(
     con(2) = x(2) - 5.0 * x(0) - x(1);
 }
 
-TEST(unit_tests, Fletcher14) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runFletcher14() {
     int n=3;
     int m=3;
     Kokkos::View<double*> x("Fletcher14::x", n);
@@ -459,6 +506,15 @@ TEST(unit_tests, Fletcher14) {
             Fletcher14
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, Fletcher14) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runFletcher14();
+
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
@@ -499,9 +555,7 @@ void RosenSuzuki(
         math::pow(x(2), 2.0) - 2.0 * x(0) + x(1) + x(3);
 }
 
-TEST(unit_tests, RosenSuzuki) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runRosenSuzuki() {
     int n=4;
     int m=3;
     Kokkos::View<double*> x("RosenSuzuki::x", n);
@@ -527,6 +581,15 @@ TEST(unit_tests, RosenSuzuki) {
             RosenSuzuki
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, RosenSuzuki) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runRosenSuzuki();
+
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
@@ -588,9 +651,7 @@ void HockSchittkowski100(
         11.0 * x(6);
 }
 
-TEST(unit_tests, HockSchittkowski100) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runHockSchittkowski100() {
     int n=7;
     int m=4;
     Kokkos::View<double*> x("HockSchittkowski100::x", n);
@@ -616,6 +677,15 @@ TEST(unit_tests, HockSchittkowski100) {
             HockSchittkowski100
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, HockSchittkowski100) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runHockSchittkowski100();
+
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
@@ -664,9 +734,7 @@ void HexagonArea(
     con(13) = x(8);
 }
 
-TEST(unit_tests, HexagonArea) {
-    Kokkos::ScopeGuard kokkos;
-
+Kokkos::View<double*> runHexagonArea() {
     int n=9;
     int m=14;
     Kokkos::View<double*> x("HexagonArea::x", n);
@@ -692,6 +760,15 @@ TEST(unit_tests, HexagonArea) {
             HexagonArea
         );
     });
+
+    return x;
+}
+
+TEST(unit_tests, HexagonArea) {
+    Kokkos::ScopeGuard kokkos;
+
+    Kokkos::View<double*> x = runHexagonArea();
+
 
     auto h_x = Kokkos::create_mirror_view(x);
     Kokkos::deep_copy(h_x, x);
