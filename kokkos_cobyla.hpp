@@ -1393,4 +1393,6 @@ IntegralType requiredIntegralWorkViewSize(
 
 } // namespace kokkos_cobyla
 
+#undef KOKKOS_COBYLA_CONSTEXPR_IF
+
 #endif // KOKKOS_COBYLA_HPP
