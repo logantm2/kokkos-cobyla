@@ -32,6 +32,7 @@ static constexpr double rhobeg = 0.5;
 static constexpr double rhoend = 0.0001;
 static constexpr int maxfun = 2000;
 
+// Minimization of a simple quadratic function of two variables.
 KOKKOS_INLINE_FUNCTION
 void SimpleQuadratic(
     int,
@@ -84,6 +85,7 @@ TEST(unit_tests, SimpleQuadratic) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// Easy two dimensional minimization in unit circle.
 KOKKOS_INLINE_FUNCTION
 void TwoDUnitCircleCalculation(
     int,
@@ -137,6 +139,7 @@ TEST(unit_tests, TwoDUnitCircleCalculation) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// Easy three dimensional minimization in ellipsoid.
 KOKKOS_INLINE_FUNCTION
 void ThreeDEllipsoidCalculation(
     int,
@@ -191,6 +194,7 @@ TEST(unit_tests, ThreeDEllipsoidCalculation) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// Weak version of Rosenbrock's problem.
 KOKKOS_INLINE_FUNCTION
 void WeakRosenbrock(
     int,
@@ -243,6 +247,7 @@ TEST(unit_tests, WeakRosenbrock) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// Intermediate version of Rosenbrock's problem.
 KOKKOS_INLINE_FUNCTION
 void IntermediateRosenbrock(
     int,
@@ -295,6 +300,8 @@ TEST(unit_tests, IntermediateRosenbrock) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// This problem is taken from Fletcher's book Practical Methods of
+// Optimization and has the equation number (9.1.15).
 KOKKOS_INLINE_FUNCTION
 void Fletcher9(
     int,
@@ -349,6 +356,8 @@ TEST(unit_tests, Fletcher9) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// This problem is taken from Fletcher's book Practical Methods of
+// Optimization and has the equation number (14.4.2).
 KOKKOS_INLINE_FUNCTION
 void Fletcher14(
     int,
@@ -405,6 +414,9 @@ TEST(unit_tests, Fletcher14) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// This problem is taken from page 66 of Hock and Schittkowski's book Test
+// Examples for Nonlinear Programming Codes. It is their test problem Number
+// 43, and has the name Rosen-Suzuki.
 KOKKOS_INLINE_FUNCTION
 void RosenSuzuki(
     int,
@@ -471,6 +483,9 @@ TEST(unit_tests, RosenSuzuki) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// This problem is taken from page 111 of Hock and Schittkowski's
+// book Test Examples for Nonlinear Programming Codes. It is their
+// test problem Number 100.
 KOKKOS_INLINE_FUNCTION
 void HockSchittkowski100(
     int,
@@ -560,6 +575,9 @@ TEST(unit_tests, HockSchittkowski100) {
     EXPECT_NEAR(0.0, l2_error, abs_tol);
 }
 
+// This problem is taken from page 415 of Luenberger's book Applied
+// Nonlinear Programming. It is to maximize the area of a hexagon of
+// unit diameter.
 KOKKOS_INLINE_FUNCTION
 void HexagonArea(
     int,
